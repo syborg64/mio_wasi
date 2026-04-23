@@ -9,6 +9,7 @@ use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Registry, Token};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::str::from_utf8;
 
 // Setup some tokens to allow us to identify which event is for which socket.
@@ -55,7 +56,7 @@ fn main() -> io::Result<()> {
             Err(_) => println!(" $ nc <IP> <PORT>"),
         }
         println!("You'll see our welcome message and anything you type will be printed here.");
-        TcpListener::from_std(stdlistener)
+        unsafe { TcpListener::from_raw_fd(stdlistener.as_raw_fd()) }
     };
 
     // Register the server with poll we can receive events for it.

@@ -12,7 +12,6 @@ use crate::{event, sys, Interest, Registry, Token};
 
 use std::fmt;
 use std::io;
-use std::net;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -89,7 +88,7 @@ use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket}
 /// # }
 /// ```
 pub struct UdpSocket {
-    inner: IoSource<net::UdpSocket>,
+    inner: IoSource<crate::sys::udp::UdpSocket>,
 }
 
 impl UdpSocket {
@@ -128,7 +127,7 @@ impl UdpSocket {
     /// standard library in the Mio equivalent. The conversion assumes nothing
     /// about the underlying socket; it is left up to the user to set it in
     /// non-blocking mode.
-    pub fn from_std(socket: net::UdpSocket) -> UdpSocket {
+    pub fn from_std(socket: crate::sys::udp::UdpSocket) -> UdpSocket {
         UdpSocket {
             inner: IoSource::new(socket),
         }
@@ -209,7 +208,7 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn send_to(&self, buf: &[u8], target: SocketAddr) -> io::Result<usize> {
-        self.inner.do_io(|inner| inner.send_to(buf, target))
+        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.send_to(buf, target))
     }
 
     /// Receives data from the socket. On success, returns the number of bytes
@@ -244,7 +243,7 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.inner.do_io(|inner| inner.recv_from(buf))
+        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.recv_from(buf))
     }
 
     /// Receives data from the socket, without removing it from the input queue.
@@ -280,13 +279,13 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn peek_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.inner.do_io(|inner| inner.peek_from(buf))
+        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.peek_from(buf))
     }
 
     /// Sends data on the socket to the address previously bound via connect(). On success,
     /// returns the number of bytes written.
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.do_io(|inner| inner.send(buf))
+        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.send(buf))
     }
 
     /// Receives data from the socket previously bound with connect(). On success, returns
@@ -300,7 +299,7 @@ impl UdpSocket {
     /// Make sure to always use a sufficiently large buffer to hold the
     /// maximum UDP packet size, which can be up to 65536 bytes in size.
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.do_io(|inner| inner.recv(buf))
+        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.recv(buf))
     }
 
     /// Receives data from the socket, without removing it from the input queue.
@@ -314,7 +313,7 @@ impl UdpSocket {
     /// Make sure to always use a sufficiently large buffer to hold the
     /// maximum UDP packet size, which can be up to 65536 bytes in size.
     pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.do_io(|inner| inner.peek(buf))
+        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.peek(buf))
     }
 
     /// Connects the UDP socket setting the default destination for `send()`

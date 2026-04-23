@@ -2,14 +2,11 @@ use crate::io_source::IoSource;
 use crate::net::TcpStream;
 #[cfg(unix)]
 use crate::sys::tcp::set_reuseaddr;
-#[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
+#[cfg(not(target_os = "wasi"))]
 use crate::sys::{
-    self,
     tcp::{bind, listen, new_for_addr},
 };
 use crate::{event, Interest, Registry, Token};
-#[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-use std::net;
 use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -45,10 +42,7 @@ use std::{fmt, io};
 /// # }
 /// ```
 pub struct TcpListener {
-    #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-    inner: IoSource<net::TcpListener>,
-    #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-    inner: IoSource<wasmedge_wasi_socket::TcpListener>,
+    inner: IoSource<crate::sys::tcp::TcpListener>,
 }
 
 impl TcpListener {
@@ -62,7 +56,7 @@ impl TcpListener {
     /// 3. Bind the socket to the specified address.
     /// 4. Calls `listen` on the socket to prepare it to receive new connections.
     // #[cfg(not(target_os = "wasi"))]
-    #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
+    #[cfg(not(target_os = "wasi"))]
     pub fn bind(addr: SocketAddr) -> io::Result<TcpListener> {
         let socket = new_for_addr(addr)?;
         #[cfg(unix)]
@@ -85,10 +79,20 @@ impl TcpListener {
         Ok(listener)
     }
 
-    /// bind wasi
+    /// bind wasmedge_wasi
     #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
     pub fn bind(addr: SocketAddr) -> io::Result<TcpListener> {
         let inner = wasmedge_wasi_socket::TcpListener::bind(addr, true)?;
+        Ok(TcpListener {
+            inner: IoSource::new(inner),
+        })
+    }
+
+    /// bind wamr_wasi
+    #[cfg(all(target_os = "wasi", feature = "wamr"))]
+    pub fn bind(addr: SocketAddr) -> io::Result<TcpListener> {
+        let inner = wamr_wasi_socket::TcpListener::bind(addr)?;
+        inner.as_ref().set_reuse_addr(true)?;
         Ok(TcpListener {
             inner: IoSource::new(inner),
         })
@@ -101,7 +105,7 @@ impl TcpListener {
     /// about the underlying listener; ; it is left up to the user to set it
     /// in non-blocking mode.
     #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-    pub fn from_std(listener: net::TcpListener) -> TcpListener {
+    pub fn from_std(listener: crate::sys::tcp::TcpListener) -> TcpListener {
         TcpListener {
             inner: IoSource::new(listener),
         }
@@ -124,16 +128,8 @@ impl TcpListener {
     /// If an accepted stream is returned, the remote address of the peer is
     /// returned along with it.
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-        return self.inner.do_io(|inner| {
-            sys::tcp::accept(inner).map(|(stream, addr)| (TcpStream::from_std(stream), addr))
-        });
-        #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-        return self.inner.do_io(|inner| {
-            inner
-                .accept(true)
-                .map(|(stream, addr)| (TcpStream::from_std(stream), addr))
-        });
+        return crate::sys::tcp::accept(&self.inner)
+            .map(|(stream, addr)| (TcpStream::from_std(stream), addr));
     }
 
     /// Returns the local socket address of this listener.
@@ -156,7 +152,10 @@ impl TcpListener {
         #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
         return self.inner.set_ttl(ttl);
         #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-        Ok(())
+        {
+            let _ = ttl;
+            Ok(())
+        }
     }
 
     /// Gets the value of the `IP_TTL` option for this socket.

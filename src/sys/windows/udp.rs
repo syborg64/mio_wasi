@@ -4,6 +4,8 @@ use std::net::{self, SocketAddr};
 use std::os::windows::io::{AsRawSocket, FromRawSocket};
 use std::os::windows::raw::SOCKET as StdSocket; // windows-sys uses usize, stdlib uses u32/u64.
 
+pub(crate) use std::net::UdpSocket;
+
 use crate::sys::windows::net::{new_ip_socket, socket_addr};
 use windows_sys::Win32::Networking::WinSock::{
     bind as win_bind, getsockopt, IPPROTO_IPV6, IPV6_V6ONLY, SOCKET_ERROR, SOCK_DGRAM,

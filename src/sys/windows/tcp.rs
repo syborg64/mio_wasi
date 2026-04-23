@@ -6,6 +6,9 @@ use windows_sys::Win32::Networking::WinSock::{self, SOCKET, SOCKET_ERROR, SOCK_S
 
 use crate::sys::windows::net::{new_ip_socket, socket_addr};
 
+pub(crate) use std::net::TcpListener;
+pub(crate) use std::net::TcpStream;
+
 pub(crate) fn new_for_addr(address: SocketAddr) -> io::Result<SOCKET> {
     new_ip_socket(address, SOCK_STREAM)
 }

@@ -34,8 +34,11 @@ use std::io;
 ///
 /// Wake a [`Poll`] instance from another thread.
 ///
-#[cfg_attr(feature = "os-poll", doc = "```")]
-#[cfg_attr(not(feature = "os-poll"), doc = "```ignore")]
+#[cfg_attr(all(feature = "os-poll", not(target_os = "wasi")), doc = "```")]
+#[cfg_attr(
+    not(all(feature = "os-poll", not(target_os = "wasi"))),
+    doc = "```ignore"
+)]
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use std::thread;
 /// use std::time::Duration;
@@ -63,6 +66,7 @@ use std::io;
 ///
 /// // On our current thread we'll poll for events, without a timeout.
 /// poll.poll(&mut events, None)?;
+/// # handle.join().unwrap();
 ///
 /// // After about 500 milliseconds we should be awoken by the other thread and
 /// // get a single event.
@@ -70,7 +74,6 @@ use std::io;
 /// let waker_event = events.iter().next().unwrap();
 /// assert!(waker_event.is_readable());
 /// assert_eq!(waker_event.token(), WAKE_TOKEN);
-/// # handle.join().unwrap();
 /// #     Ok(())
 /// # }
 /// ```

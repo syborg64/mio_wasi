@@ -6,6 +6,9 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use crate::sys::unix::net::{new_socket, socket_addr, to_socket_addr};
 
+pub(crate) use std::net::TcpListener;
+pub(crate) use std::net::TcpStream;
+
 pub(crate) fn new_for_addr(address: SocketAddr) -> io::Result<libc::c_int> {
     let domain = match address {
         SocketAddr::V4(_) => libc::AF_INET,

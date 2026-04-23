@@ -12,17 +12,17 @@ use std::time::Duration;
 use crate::Registry;
 #[cfg(feature = "net")]
 use crate::{Interest, Token};
-use wasmedge_wasi_socket::wasi_poll as wasi;
+use wamr_wasi_socket::wasi_poll as wasi;
 
 cfg_net! {
 
 pub mod tcp {
     use std::io;
     use std::net::SocketAddr;
-    use wasmedge_wasi_socket::socket::{self, Socket};
+    use wamr_wasi_socket::socket::{self, Socket};
 
-    pub(crate) use wasmedge_wasi_socket::TcpListener;
-    pub(crate) use wasmedge_wasi_socket::TcpStream;
+    pub(crate) use wamr_wasi_socket::TcpListener;
+    pub(crate) use wamr_wasi_socket::TcpStream;
 
     pub(crate) fn new_for_addr(address: SocketAddr) -> io::Result<Socket> {
         let domain = match address {
@@ -35,9 +35,12 @@ pub mod tcp {
         Ok(s)
     }
 
-    pub(crate) fn accept(listener: &wasmedge_wasi_socket::TcpListener) -> io::Result<(wasmedge_wasi_socket::TcpStream, SocketAddr)> {
-        listener.accept(true)
+
+    /// probably very unsafe ??
+    pub(crate) fn bind(socket: &wamr_wasi_socket::TcpListener, addr: SocketAddr) -> io::Result<()> {
+        socket.as_ref().bind(&addr)
     }
+
 
     pub(crate) fn connect(socket: &Socket, addr: SocketAddr) -> io::Result<()> {
         match socket.connect(&addr) {
@@ -45,7 +48,35 @@ pub mod tcp {
             _ => Ok(()),
         }
     }
+
+    pub(crate) fn accept(listener: &wamr_wasi_socket::TcpListener) -> io::Result<(wamr_wasi_socket::TcpStream, SocketAddr)> {
+        listener.accept()
+    }
+
+
+    pub(crate) fn listen(socket: &wamr_wasi_socket::TcpListener, backlog: u32) -> io::Result<()> {
+        socket.as_ref().listen(backlog)
+    }
+
+    pub(crate) fn set_reuseaddr(socket: &wamr_wasi_socket::TcpListener, reuseaddr: bool) -> io::Result<()> {
+        socket.as_ref().set_reuse_addr(reuseaddr)
+    }
 }
+}
+
+pub mod udp {
+    use std::io;
+    use std::net;
+
+    pub(crate) use wamr_wasi_socket::UdpSocket;
+
+    pub fn bind(addr: net::SocketAddr) -> io::Result<wamr_wasi_socket::UdpSocket> {
+        wamr_wasi_socket::UdpSocket::bind(addr)
+    }
+
+    pub(crate) fn only_v6(socket: &wamr_wasi_socket::UdpSocket) -> io::Result<bool> {
+        socket.as_ref().ipv6_only()
+    }
 }
 
 /// Unique id for use as `SelectorId`.
@@ -53,21 +84,26 @@ pub mod tcp {
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 mod waker {
+
+
     use super::{Selector, Token};
     use std::io;
     #[derive(Debug)]
-    pub struct Waker {}
+    pub struct Waker {
+    }
 
     impl Waker {
-        pub fn new(_: &Selector, _: Token) -> io::Result<Waker> {
-            Ok(Waker {})
+        pub fn new(_selector: &Selector, _stoken: Token) -> io::Result<Waker> {
+            Ok(Waker{})
         }
 
         pub fn wake(&self) -> io::Result<()> {
-            Ok(())
+            Err(io::Error::new(io::ErrorKind::Unsupported, "Wakers are not supported on wasm"))
         }
     }
 }
+
+#[allow(unused)]
 pub use waker::Waker;
 
 pub struct Selector {
@@ -154,7 +190,9 @@ impl Selector {
 
         debug_assert!(events.capacity() >= length);
 
+        println!("poll start");
         let res = unsafe { wasi::poll(subscriptions.as_ptr(), events.as_mut_ptr(), length) };
+        println!("poll return");
 
         // Remove the timeout subscription we possibly added above.
         if timeout.is_some() {
@@ -179,6 +217,7 @@ impl Selector {
                     let fd = ev.userdata as wasi::Fd;
 
                     if is_timeout_event(ev) {
+                        println!("is timeout event!");
                         timeout_index = Some(i);
                         continue;
                     }
@@ -323,7 +362,7 @@ pub mod event {
 
     use crate::sys::Event;
     use crate::Token;
-    use wasmedge_wasi_socket::wasi_poll as wasi;
+    use wamr_wasi_socket::wasi_poll as wasi;
 
     pub fn token(event: &Event) -> Token {
         Token(event.userdata as usize)

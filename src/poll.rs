@@ -36,11 +36,11 @@ use std::{fmt, io};
 /// use mio::{Events, Poll, Interest, Token};
 /// use mio::net::TcpStream;
 ///
-/// use std::net::{self, SocketAddr};
+/// use std::net::SocketAddr;
 ///
 /// // Bind a server socket to connect to.
 /// let addr: SocketAddr = "127.0.0.1:0".parse()?;
-/// let server = net::TcpListener::bind(addr)?;
+/// let server = mio::net::TcpListener::bind(addr)?;
 ///
 /// // Construct a new `Poll` handle as well as the `Events` we'll store into
 /// let mut poll = Poll::new()?;
@@ -129,7 +129,6 @@ use std::{fmt, io};
 #[cfg_attr(all(feature = "os-poll", feature = "net"), doc = "```")]
 #[cfg_attr(not(all(feature = "os-poll", feature = "net")), doc = "```ignore")]
 /// # use std::error::Error;
-/// # use std::net;
 /// # fn main() -> Result<(), Box<dyn Error>> {
 /// use mio::{Poll, Interest, Token};
 /// use mio::net::TcpStream;
@@ -138,7 +137,7 @@ use std::{fmt, io};
 /// use std::thread;
 ///
 /// let address: SocketAddr = "127.0.0.1:0".parse()?;
-/// let listener = net::TcpListener::bind(address)?;
+/// let listener = mio::net::TcpListener::bind(address)?;
 /// let mut sock = TcpStream::connect(listener.local_addr()?)?;
 ///
 /// thread::sleep(Duration::from_secs(1));
@@ -361,9 +360,9 @@ impl Poll {
     /// # use std::error::Error;
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use mio::{Events, Poll, Interest, Token};
-    /// use mio::net::TcpStream;
+    /// use mio::net::{TcpStream, TcpListener};
     ///
-    /// use std::net::{TcpListener, SocketAddr};
+    /// use std::net::SocketAddr;
     /// use std::thread;
     ///
     /// // Bind a server socket to connect to.
@@ -481,7 +480,6 @@ impl Registry {
     #[cfg_attr(all(feature = "os-poll", feature = "net"), doc = "```")]
     #[cfg_attr(not(all(feature = "os-poll", feature = "net")), doc = "```ignore")]
     /// # use std::error::Error;
-    /// # use std::net;
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use mio::{Events, Poll, Interest, Token};
     /// use mio::net::TcpStream;
@@ -491,7 +489,7 @@ impl Registry {
     /// let mut poll = Poll::new()?;
     ///
     /// let address: SocketAddr = "127.0.0.1:0".parse()?;
-    /// let listener = net::TcpListener::bind(address)?;
+    /// let listener = mio::net::TcpListener::bind(address)?;
     /// let mut socket = TcpStream::connect(listener.local_addr()?)?;
     ///
     /// // Register the socket with `poll`
@@ -559,7 +557,6 @@ impl Registry {
     #[cfg_attr(all(feature = "os-poll", feature = "net"), doc = "```")]
     #[cfg_attr(not(all(feature = "os-poll", feature = "net")), doc = "```ignore")]
     /// # use std::error::Error;
-    /// # use std::net;
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use mio::{Poll, Interest, Token};
     /// use mio::net::TcpStream;
@@ -568,7 +565,7 @@ impl Registry {
     /// let poll = Poll::new()?;
     ///
     /// let address: SocketAddr = "127.0.0.1:0".parse()?;
-    /// let listener = net::TcpListener::bind(address)?;
+    /// let listener = mio::net::TcpListener::bind(address)?;
     /// let mut socket = TcpStream::connect(listener.local_addr()?)?;
     ///
     /// // Register the socket with `poll`, requesting readable
@@ -626,7 +623,6 @@ impl Registry {
     #[cfg_attr(all(feature = "os-poll", feature = "net"), doc = "```")]
     #[cfg_attr(not(all(feature = "os-poll", feature = "net")), doc = "```ignore")]
     /// # use std::error::Error;
-    /// # use std::net;
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use mio::{Events, Poll, Interest, Token};
     /// use mio::net::TcpStream;
@@ -636,7 +632,7 @@ impl Registry {
     /// let mut poll = Poll::new()?;
     ///
     /// let address: SocketAddr = "127.0.0.1:0".parse()?;
-    /// let listener = net::TcpListener::bind(address)?;
+    /// let listener = mio::net::TcpListener::bind(address)?;
     /// let mut socket = TcpStream::connect(listener.local_addr()?)?;
     ///
     /// // Register the socket with `poll`

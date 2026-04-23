@@ -1,15 +1,15 @@
 // You can run this example from the root of the mio repo:
 // cargo run --example udp_server --features="os-poll net"
-use log::warn;
-use mio::{Events, Interest, Poll, Token};
 use std::io;
-
-// A token to allow us to identify which event is for the `UdpSocket`.
-const UDP_SOCKET: Token = Token(0);
-
-#[cfg(not(target_os = "wasi"))]
+    
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 fn main() -> io::Result<()> {
+    use log::warn;
+    use mio::{Events, Interest, Poll, Token};
     use mio::net::UdpSocket;
+
+    // A token to allow us to identify which event is for the `UdpSocket`.
+    const UDP_SOCKET: Token = Token(0);
 
     env_logger::init();
 
@@ -79,7 +79,7 @@ fn main() -> io::Result<()> {
     }
 }
 
-#[cfg(target_os = "wasi")]
+#[cfg(not(any(not(target_os = "wasi"), feature = "wamr")))]
 fn main() {
     panic!("can't bind to an address with wasi")
 }

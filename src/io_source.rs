@@ -1,8 +1,6 @@
 use std::ops::{Deref, DerefMut};
-#[cfg(unix)]
-use std::os::unix::io::AsRawFd;
-#[cfg(target_os = "wasi")]
-use std::os::wasi::io::AsRawFd;
+#[cfg(any(unix, target_os = "wasi"))]
+use std::os::fd::AsRawFd;
 #[cfg(windows)]
 use std::os::windows::io::AsRawSocket;
 #[cfg(debug_assertions)]
@@ -202,7 +200,7 @@ where
     }
 }
 
-#[cfg(all(target_os = "wasi", not(feature = "wasmedge")))]
+#[cfg(all(target_os = "wasi", not(any(feature = "wasmedge", feature = "wamr"))))]
 impl<T> event::Source for IoSource<T>
 where
     T: AsRawFd,
@@ -240,7 +238,7 @@ where
     }
 }
 
-#[cfg(all(target_os = "wasi", feature = "wasmedge"))]
+#[cfg(all(target_os = "wasi", any(feature = "wasmedge", feature = "wamr")))]
 impl<T> event::Source for IoSource<T>
 where
     T: AsRawFd,

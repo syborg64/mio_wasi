@@ -17,7 +17,9 @@ cfg_os_poll! {
     mod selector;
     pub(crate) use self::selector::{event, Event, Events, Selector};
 
+    #[cfg(feature = "os-ext")]
     mod sourcefd;
+    #[cfg(feature = "os-ext")]
     pub use self::sourcefd::SourceFd;
 
     mod waker;

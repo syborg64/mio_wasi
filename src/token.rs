@@ -53,7 +53,7 @@
 /// // Spawn a thread that will connect a bunch of sockets then close them
 /// let addr = listener.local_addr()?;
 /// thread::spawn(move || {
-///     use std::net::TcpStream;
+///     use mio::net::TcpStream;
 ///
 ///     // +1 here is to connect an extra socket to signal the socket to close
 ///     for _ in 0..(MAX_SOCKETS+1) {

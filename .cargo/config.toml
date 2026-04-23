@@ -1,5 +1,29 @@
 [build]
-target="wasm32-wasi"
+target="wasm32-wasip1-threads"
+# target="x86_64-pc-windows-gnu"
 
-[target.wasm32-wasi]
-runner = "wasmedge"
+# this does not appear to work no matter what I try
+# [target.'cfg(feature = "wasmedge")']
+# runner = "wasmedge"
+
+[target.'cfg(feature = wamr)']
+runner = "iwasm  --addr-pool=0.0.0.0/0"
+
+# [target.wasm32-wasip1]
+# runner = "iwasm  --addr-pool=0.0.0.0/0"
+
+# [target.'cfg(feature = "wasmedge")']
+# runner = "wasmedge"
+
+# [target.'cfg(any(feature = "wamr"), not(feature = "wamr"))']
+# runner = "iwasm  --addr-pool=0.0.0.0/0"
+
+# [target.wasm32-wasip2]
+# runner = "iwasm  --addr-pool=0.0.0.0/0"
+
+# [target.wasm32-wasip1-threads]
+# runner = "iwasm  --addr-pool=0.0.0.0/0"
+
+# [target.wasm32-wasip3]
+# runner = "iwasm  --addr-pool=0.0.0.0/0"
+

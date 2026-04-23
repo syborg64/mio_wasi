@@ -34,7 +34,10 @@ path = "src/lib.rs"
 # For documentation of features see the `mio::features` module.
 [features]
 # By default Mio only provides a shell implementation.
-default = ["wasmedge", "os-poll", "net", "log"]
+default = ["wamr", "os-poll", "net", "log"]
+
+# These are the same defaults excluding the runtime platform
+default-no-platform = ["os-poll", "net", "log"]
 
 # Enables the `Poll` and `Registry` types.
 os-poll = []
@@ -47,7 +50,10 @@ os-ext = [
 # Enables `mio::net` module containing networking primitives.
 net = []
 
-wasmedge = ["wasmedge_wasi_socket"]
+wasmedge = ["dep:wasmedge_wasi_socket"]
+wamr = ["dep:wamr_wasi_socket"]
+
+wasmtime = []
 
 [dependencies]
 log = { version = "0.4.8", optional = true }
@@ -69,6 +75,7 @@ features = [
 wasi = "0.11.0"
 libc = "0.2.121"
 wasmedge_wasi_socket = {version="0.5", optional = true, features = ["wasi_poll"]}
+wamr_wasi_socket = {version="0.2.2-rc-2026-04-23", optional = true, features = ["wasi_poll", "fake"]}
 
 [dev-dependencies]
 env_logger = { version = "0.9.3", default-features = false }
@@ -80,7 +87,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 targets = [
   "aarch64-apple-ios",
   "aarch64-linux-android",
-  "wasm32-wasi",
+  "wasm32-wasip1",
+  "wasm32-wasip1-threads",
   "x86_64-apple-darwin",
   "x86_64-pc-windows-msvc",
   "x86_64-unknown-dragonfly",
@@ -92,7 +100,7 @@ targets = [
 ]
 
 [package.metadata.playground]
-features = ["os-poll", "os-ext", "net"]
+features = ["os-poll", "os-ext", "net", "wasmedge", "wamr"]
 
 [[example]]
 name = "tcp_server"

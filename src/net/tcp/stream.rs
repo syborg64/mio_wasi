@@ -1,7 +1,5 @@
 use std::fmt;
 use std::io::{self, IoSlice, IoSliceMut, Read, Write};
-#[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-use std::net;
 use std::net::{Shutdown, SocketAddr};
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -13,7 +11,7 @@ use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket}
 use crate::io_source::IoSource;
 #[cfg(not(target_os = "wasi"))]
 use crate::sys::tcp::{connect, new_for_addr};
-#[cfg(target_os = "wasi")]
+#[cfg(all(target_os = "wasi", feature = "wasmedge"))]
 use crate::sys::tcp::{connect, new_for_addr};
 
 use crate::{event, Interest, Registry, Token};
@@ -26,12 +24,12 @@ use crate::{event, Interest, Registry, Token};
 ///
 #[cfg_attr(feature = "os-poll", doc = "```")]
 #[cfg_attr(not(feature = "os-poll"), doc = "```ignore")]
-/// # use std::net::{TcpListener, SocketAddr};
+/// # use std::net::SocketAddr;
 /// # use std::error::Error;
 /// #
 /// # fn main() -> Result<(), Box<dyn Error>> {
 /// let address: SocketAddr = "127.0.0.1:0".parse()?;
-/// let listener = TcpListener::bind(address)?;
+/// let listener = mio::net::TcpListener::bind(address)?;
 /// use mio::{Events, Interest, Poll, Token};
 /// use mio::net::TcpStream;
 /// use std::time::Duration;
@@ -51,10 +49,7 @@ use crate::{event, Interest, Registry, Token};
 /// # }
 /// ```
 pub struct TcpStream {
-    #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-    inner: IoSource<net::TcpStream>,
-    #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-    inner: IoSource<wasmedge_wasi_socket::TcpStream>,
+    inner: IoSource<crate::sys::tcp::TcpStream>,
 }
 
 impl TcpStream {
@@ -99,13 +94,19 @@ impl TcpStream {
         Ok(stream)
     }
 
-    /// connect wasi
+    /// connect wasmedge_wasi
     #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
     pub fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
         let socket = new_for_addr(addr)?;
         connect(&socket, addr)?;
         let stream = unsafe { wasmedge_wasi_socket::TcpStream::from_raw_fd(socket.into_raw_fd()) };
         Ok(TcpStream::from_std(stream))
+    }
+
+    /// connect wamr_wasi
+    #[cfg(all(target_os = "wasi", feature = "wamr"))]
+    pub fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
+        Ok(TcpStream::from_std(crate::sys::tcp::TcpStream::connect(addr)?))
     }
 
     /// Creates a new `TcpStream` from a standard `net::TcpStream`.
@@ -121,7 +122,7 @@ impl TcpStream {
     /// should already be connected via some other means (be it manually, or
     /// the standard library).
     #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-    pub fn from_std(stream: net::TcpStream) -> TcpStream {
+    pub fn from_std(stream: crate::sys::tcp::TcpStream) -> TcpStream {
         TcpStream {
             inner: IoSource::new(stream),
         }
@@ -171,7 +172,10 @@ impl TcpStream {
         #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
         return self.inner.set_nodelay(nodelay);
         #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-        Ok(())
+        {
+            let _ = nodelay;
+            Ok(())
+        }
     }
 
     /// Gets the value of the `TCP_NODELAY` option on this socket.
@@ -206,7 +210,10 @@ impl TcpStream {
         #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
         return self.inner.set_ttl(ttl);
         #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-        Ok(())
+        {
+            let _  = ttl;
+            Ok(())
+        }
     }
 
     /// Gets the value of the `IP_TTL` option for this socket.
@@ -233,9 +240,9 @@ impl TcpStream {
     /// the field in the process. This can be useful for checking errors between
     /// calls.
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
+        #[cfg(any(not(target_os = "wasi"), all(not(feature = "wasmedge"), not(feature = "wamr"))))]
         return self.inner.take_error();
-        #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
+        #[cfg(all(target_os = "wasi", any(feature = "wasmedge", feature = "wamr")))]
         Ok(None)
     }
 
@@ -246,10 +253,13 @@ impl TcpStream {
     /// Successive calls return the same data. This is accomplished by passing
     /// `MSG_PEEK` as a flag to the underlying recv system call.
     pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
-        #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
+        #[cfg(any(not(target_os = "wasi"), all(not(feature = "wasmedge"), not(feature = "wamr"))))]
         return self.inner.peek(buf);
-        #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-        Ok(0)
+        #[cfg(all(target_os = "wasi", any(feature = "wasmedge", feature = "wamr")))]
+        {
+            let _ = buf;
+            Ok(0)
+        }
     }
 
     /// Execute an I/O operation ensuring that the socket receives more events
@@ -313,49 +323,49 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.read(buf))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.read(buf))
     }
 
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.read_vectored(bufs))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.read_vectored(bufs))
     }
 }
 
 impl<'a> Read for &'a TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.read(buf))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.read(buf))
     }
 
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.read_vectored(bufs))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.read_vectored(bufs))
     }
 }
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.write(buf))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.write(buf))
     }
 
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.write_vectored(bufs))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.write_vectored(bufs))
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.inner.do_io(|mut inner| inner.flush())
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.flush())
     }
 }
 
 impl<'a> Write for &'a TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.write(buf))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.write(buf))
     }
 
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        self.inner.do_io(|mut inner| inner.write_vectored(bufs))
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.write_vectored(bufs))
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.inner.do_io(|mut inner| inner.flush())
+        self.inner.do_io(|mut inner: &crate::sys::tcp::TcpStream| inner.flush())
     }
 }
 

@@ -53,8 +53,8 @@ cfg_os_poll! {
 
 #[cfg(unix)]
 cfg_os_poll! {
-    mod unix;
-    pub use self::unix::*;
+    pub(crate) mod unix;
+    pub use unix::*;
 }
 
 #[cfg(windows)]

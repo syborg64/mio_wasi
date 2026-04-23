@@ -1,6 +1,5 @@
 // Not all functions are used by all tests.
 #![allow(dead_code, unused_macros)]
-#![cfg(not(target_os = "wasi"))]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 
 use std::mem::size_of;
@@ -11,7 +10,9 @@ use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Once;
 use std::time::Duration;
-use std::{env, fmt, fs, io};
+use std::{env, fmt, io};
+#[cfg(not(target_os = "wasi"))] 
+use std::fs;
 
 use log::{error, warn};
 use mio::event::Event;
@@ -25,9 +26,11 @@ pub fn init() {
         env_logger::try_init().expect("unable to initialise logger");
 
         // Remove all temporary files from previous test runs.
-        let dir = temp_dir();
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).expect("unable to create temporary directory");
+        #[cfg(not(target_os = "wasi"))] {
+            let dir = temp_dir();
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("unable to create temporary directory");
+        }
     })
 }
 

@@ -24,9 +24,12 @@ use std::time::Duration;
 use crate::{Interest, Token};
 
 cfg_net! {
-    pub(crate) mod tcp {
+    pub mod tcp {
         use std::io;
         use std::net::{self, SocketAddr};
+
+        pub(crate) use std::net::TcpListener;
+        pub(crate) use std::net::TcpStream;
 
         pub(crate) fn accept(listener: &net::TcpListener) -> io::Result<(net::TcpStream, SocketAddr)> {
             let (stream, addr) = listener.accept()?;
@@ -203,6 +206,11 @@ impl Selector {
         }
 
         ret
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn register_waker(&self) -> bool {
+        !self.subscriptions.lock().unwrap().is_empty()
     }
 }
 

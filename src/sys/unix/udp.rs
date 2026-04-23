@@ -5,6 +5,8 @@ use std::mem;
 use std::net::{self, SocketAddr};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
+pub(crate) use std::net::UdpSocket;
+
 pub fn bind(addr: SocketAddr) -> io::Result<net::UdpSocket> {
     let fd = new_ip_socket(addr, libc::SOCK_DGRAM)?;
     let socket = unsafe { net::UdpSocket::from_raw_fd(fd) };
