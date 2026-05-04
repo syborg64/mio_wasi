@@ -128,8 +128,8 @@ impl TcpListener {
     /// If an accepted stream is returned, the remote address of the peer is
     /// returned along with it.
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        return crate::sys::tcp::accept(&self.inner)
-            .map(|(stream, addr)| (TcpStream::from_std(stream), addr));
+        return self.inner.do_io(|inner| crate::sys::tcp::accept(&inner)
+            .map(|(stream, addr)| (TcpStream::from_sys(stream), addr)));
     }
 
     /// Returns the local socket address of this listener.
