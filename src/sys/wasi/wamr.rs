@@ -222,11 +222,6 @@ impl Selector {
                         continue;
                     }
 
-                    if ev.error != 0 {
-                        let e = io_err(ev.error);
-                        return Err(e);
-                    }
-
                     if let Some((token, _interest, read_state, write_state)) =
                         subscriptions.get(&fd)
                     {
