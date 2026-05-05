@@ -92,28 +92,59 @@ impl TcpListener {
     #[cfg(all(target_os = "wasi", feature = "wamr"))]
     pub fn bind(addr: SocketAddr) -> io::Result<TcpListener> {
         let inner = wamr_wasi_socket::TcpListener::bind(addr)?;
+        inner.as_ref().set_nonblocking(true)?;
         inner.as_ref().set_reuse_addr(true)?;
         Ok(TcpListener {
             inner: IoSource::new(inner),
         })
     }
 
-    /// Creates a new `TcpListener` from a standard `net::TcpListener`.
+    /// Creates a new `TcpListener` from a standard `std::net::TcpListener`.
     ///
     /// This function is intended to be used to wrap a TCP listener from the
     /// standard library in the Mio equivalent. The conversion assumes nothing
     /// about the underlying listener; ; it is left up to the user to set it
     /// in non-blocking mode.
-    #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-    pub fn from_std(listener: crate::sys::tcp::TcpListener) -> TcpListener {
-        TcpListener {
-            inner: IoSource::new(listener),
+    pub fn from_std(listener: std::net::TcpListener) -> TcpListener {
+        #[cfg(not(target_os = "wasi"))]
+        {
+            TcpListener {
+                inner: IoSource::new(listener),
+            }
+        }
+
+        #[cfg(target_os = "wasi")]
+        {
+            TcpListener {
+                inner: IoSource::new(unsafe { FromRawFd::from_raw_fd(listener.into_raw_fd()) }),
+            }
         }
     }
 
-    /// fromstd wasi
-    #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-    pub fn from_std(listener: wasmedge_wasi_socket::TcpListener) -> TcpListener {
+    /// Creates standard `std::net::TcpListener` from a mio `TcpListener`.
+    ///
+    /// This function is intended to be used to only to implement platform initialisation 
+    /// of an std::TcpListener from mio's sys impl where std is incomplete.
+    /// It is left to the user to set it in blocking mode. 
+    pub fn into_std(self) -> std::net::TcpListener {
+        #[cfg(not(target_os = "wasi"))]
+        {
+            self.inner.into_inner()
+        }
+
+        #[cfg(target_os = "wasi")]
+        {
+            unsafe { std::net::TcpListener::from_raw_fd(self.into_raw_fd()) }
+        }
+    }
+
+    /// Creates a new `TcpListener` from the sys's impl for `TcpListener`.
+    ///
+    /// This function is intended to be used to wrap a TCP listener from the
+    /// underlying impl in the Mio equivalent. The conversion assumes nothing
+    /// about the underlying listener; ; it is left up to the user to set it
+    /// in non-blocking mode.
+    pub fn from_sys(listener: crate::sys::tcp::TcpListener) -> TcpListener {
         TcpListener {
             inner: IoSource::new(listener),
         }

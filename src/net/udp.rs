@@ -18,6 +18,9 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 #[cfg(windows)]
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
 
+#[cfg(all(target_os = "wasi", feature = "wamr"))]
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+
 /// A User Datagram Protocol socket.
 ///
 /// This is an implementation of a bound UDP socket. This supports both IPv4 and
@@ -118,7 +121,7 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn bind(addr: SocketAddr) -> io::Result<UdpSocket> {
-        sys::udp::bind(addr).map(UdpSocket::from_std)
+        sys::udp::bind(addr).map(UdpSocket::from_sys)
     }
 
     /// Creates a new `UdpSocket` from a standard `net::UdpSocket`.
@@ -127,7 +130,31 @@ impl UdpSocket {
     /// standard library in the Mio equivalent. The conversion assumes nothing
     /// about the underlying socket; it is left up to the user to set it in
     /// non-blocking mode.
-    pub fn from_std(socket: crate::sys::udp::UdpSocket) -> UdpSocket {
+    ///
+    pub fn from_std(socket: std::net::UdpSocket) -> UdpSocket {
+        #[cfg(not(target_os = "wasi"))]
+        {
+            UdpSocket {
+                inner: IoSource::new(socket),
+            }
+        }
+
+        #[cfg(target_os = "wasi")]
+        {
+            UdpSocket {
+                inner: IoSource::new(unsafe { FromRawFd::from_raw_fd(socket.into_raw_fd()) }),
+            }
+        }
+    }
+
+    /// Creates a new `UdpSocket` from a the sys's impl for `UdpSocket`.
+    ///
+    /// This function is intended to be used to wrap a UDP socket from the
+    /// underlying impl in the Mio equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to set it in
+    /// non-blocking mode.
+    ///
+    pub fn from_sys(socket: crate::sys::udp::UdpSocket) -> UdpSocket {
         UdpSocket {
             inner: IoSource::new(socket),
         }
@@ -208,7 +235,8 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn send_to(&self, buf: &[u8], target: SocketAddr) -> io::Result<usize> {
-        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.send_to(buf, target))
+        self.inner
+            .do_io(|inner: &crate::sys::udp::UdpSocket| inner.send_to(buf, target))
     }
 
     /// Receives data from the socket. On success, returns the number of bytes
@@ -243,7 +271,8 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.recv_from(buf))
+        self.inner
+            .do_io(|inner: &crate::sys::udp::UdpSocket| inner.recv_from(buf))
     }
 
     /// Receives data from the socket, without removing it from the input queue.
@@ -279,13 +308,15 @@ impl UdpSocket {
     /// # }
     /// ```
     pub fn peek_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.peek_from(buf))
+        self.inner
+            .do_io(|inner: &crate::sys::udp::UdpSocket| inner.peek_from(buf))
     }
 
     /// Sends data on the socket to the address previously bound via connect(). On success,
     /// returns the number of bytes written.
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.send(buf))
+        self.inner
+            .do_io(|inner: &crate::sys::udp::UdpSocket| inner.send(buf))
     }
 
     /// Receives data from the socket previously bound with connect(). On success, returns
@@ -299,7 +330,8 @@ impl UdpSocket {
     /// Make sure to always use a sufficiently large buffer to hold the
     /// maximum UDP packet size, which can be up to 65536 bytes in size.
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.recv(buf))
+        self.inner
+            .do_io(|inner: &crate::sys::udp::UdpSocket| inner.recv(buf))
     }
 
     /// Receives data from the socket, without removing it from the input queue.
@@ -313,7 +345,8 @@ impl UdpSocket {
     /// Make sure to always use a sufficiently large buffer to hold the
     /// maximum UDP packet size, which can be up to 65536 bytes in size.
     pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.do_io(|inner: &crate::sys::udp::UdpSocket| inner.peek(buf))
+        self.inner
+            .do_io(|inner: &crate::sys::udp::UdpSocket| inner.peek(buf))
     }
 
     /// Connects the UDP socket setting the default destination for `send()`
@@ -665,6 +698,33 @@ impl FromRawFd for UdpSocket {
     /// non-blocking mode.
     unsafe fn from_raw_fd(fd: RawFd) -> UdpSocket {
         UdpSocket::from_std(FromRawFd::from_raw_fd(fd))
+    }
+}
+
+#[cfg(all(target_os = "wasi", feature = "wamr"))]
+impl IntoRawFd for UdpSocket {
+    fn into_raw_fd(self) -> RawFd {
+        self.inner.into_inner().into_raw_fd()
+    }
+}
+
+#[cfg(all(target_os = "wasi", feature = "wamr"))]
+impl AsRawFd for UdpSocket {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
+#[cfg(all(target_os = "wasi", feature = "wamr"))]
+impl FromRawFd for UdpSocket {
+    /// Converts a `RawFd` to a `UdpSocket`.
+    ///
+    /// # Notes
+    ///
+    /// The caller is responsible for ensuring that the socket is in
+    /// non-blocking mode.
+    unsafe fn from_raw_fd(fd: RawFd) -> UdpSocket {
+        UdpSocket::from_sys(FromRawFd::from_raw_fd(fd))
     }
 }
 

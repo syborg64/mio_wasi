@@ -11,7 +11,7 @@ use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket}
 use crate::io_source::IoSource;
 #[cfg(not(target_os = "wasi"))]
 use crate::sys::tcp::{connect, new_for_addr};
-#[cfg(all(target_os = "wasi", feature = "wasmedge"))]
+#[cfg(all(target_os = "wasi"))]
 use crate::sys::tcp::{connect, new_for_addr};
 
 use crate::{event, Interest, Registry, Token};
@@ -94,19 +94,13 @@ impl TcpStream {
         Ok(stream)
     }
 
-    /// connect wasmedge_wasi
-    #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
+    /// connect wasi
+    #[cfg(target_os = "wasi")]
     pub fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
         let socket = new_for_addr(addr)?;
         connect(&socket, addr)?;
-        let stream = unsafe { wasmedge_wasi_socket::TcpStream::from_raw_fd(socket.into_raw_fd()) };
-        Ok(TcpStream::from_std(stream))
-    }
-
-    /// connect wamr_wasi
-    #[cfg(all(target_os = "wasi", feature = "wamr"))]
-    pub fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
-        Ok(TcpStream::from_std(crate::sys::tcp::TcpStream::connect(addr)?))
+        let stream = unsafe { crate::sys::tcp::TcpStream::from_raw_fd(socket.into_raw_fd()) };
+        Ok(TcpStream::from_sys(stream))
     }
 
     /// Creates a new `TcpStream` from a standard `net::TcpStream`.
@@ -121,16 +115,36 @@ impl TcpStream {
     /// The TCP stream here will not have `connect` called on it, so it
     /// should already be connected via some other means (be it manually, or
     /// the standard library).
-    #[cfg(any(not(target_os = "wasi"), not(feature = "wasmedge")))]
-    pub fn from_std(stream: crate::sys::tcp::TcpStream) -> TcpStream {
-        TcpStream {
-            inner: IoSource::new(stream),
+    pub fn from_std(stream: std::net::TcpStream) -> TcpStream {
+        #[cfg(not(target_os = "wasi"))]
+        {
+            TcpStream {
+                inner: IoSource::new(stream),
+            }
+        }
+
+        #[cfg(target_os = "wasi")]
+        {
+            let sock: crate::sys::tcp::TcpStream = unsafe { FromRawFd::from_raw_fd(stream.into_raw_fd()) };
+            TcpStream {
+                inner: IoSource::new(sock),
+            }
         }
     }
 
-    /// from std wasi
-    #[cfg(all(target_os = "wasi", feature = "wasmedge"))]
-    pub fn from_std(stream: wasmedge_wasi_socket::TcpStream) -> TcpStream {
+    /// Creates a new `TcpStream` from a the sys's impl for `TcpStream`.
+    ///
+    /// This function is intended to be used to wrap a TCP stream from the
+    /// underlying sys in the Mio equivalent. The conversion assumes nothing
+    /// about the underlying stream; it is left up to the user to set it in
+    /// non-blocking mode.
+    ///
+    /// # Note
+    ///
+    /// The TCP stream here will not have `connect` called on it, so it
+    /// should already be connected via some other means (be it manually, or
+    /// the standard library).
+    pub fn from_sys(stream: crate::sys::tcp::TcpStream) -> TcpStream {
         TcpStream {
             inner: IoSource::new(stream),
         }

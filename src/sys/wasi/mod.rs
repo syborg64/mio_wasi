@@ -12,3 +12,6 @@ pub use self::wasmedge::*;
 mod wamr;
 #[cfg(feature = "wamr")]
 pub use self::wamr::*;
+
+#[cfg(not(any(feature = "wasmedge", feature = "wamr", feature = "wasmtime")))]
+compile_error!("You need to enable one of the runtime impl features (wasmedge, wamr, wasmtime) for the net feature!");

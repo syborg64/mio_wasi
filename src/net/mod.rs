@@ -28,9 +28,9 @@
 mod tcp;
 pub use self::tcp::{TcpListener, TcpStream};
 
-#[cfg(any(feature = "wamr", not(target_os = "wasi")))]
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 mod udp;
-#[cfg(any(feature = "wamr", not(target_os = "wasi")))]
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 pub use self::udp::UdpSocket;
 
 #[cfg(unix)]
