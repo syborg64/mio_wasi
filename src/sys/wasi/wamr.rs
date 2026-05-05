@@ -20,6 +20,7 @@ pub mod tcp {
     use std::io;
     use std::net::SocketAddr;
     use wamr_wasi_socket::socket::{self, Socket};
+    use std::convert::TryInto;
 
     pub(crate) use wamr_wasi_socket::TcpListener;
     pub(crate) use wamr_wasi_socket::TcpStream;
@@ -44,24 +45,31 @@ pub mod tcp {
 
     pub(crate) fn connect(socket: &Socket, addr: SocketAddr) -> io::Result<()> {
         match socket.connect(&addr) {
-            Err(err) if err.raw_os_error() != Some(libc::EINPROGRESS) => Err(err),
-            _ => Ok(()),
+            Err(err) if err.raw_os_error() == Some(libc::EINPROGRESS) => {
+                Ok(())
+            },
+            Err(err) => {
+                Err(err)
+            }
+            Ok(()) => Ok(()),
         }
     }
 
     pub(crate) fn accept(listener: &wamr_wasi_socket::TcpListener) -> io::Result<(wamr_wasi_socket::TcpStream, SocketAddr)> {
-        listener.accept()
+        let s = listener.accept()?;
+        s.0.set_nonblocking(true)?;
+        Ok(s)
     }
 
 
     pub(crate) fn listen(socket: &wamr_wasi_socket::TcpListener, backlog: u32) -> io::Result<()> {
+        let backlog = backlog.try_into().unwrap_or(i32::max_value());
         socket.as_ref().listen(backlog)
     }
 
     pub(crate) fn set_reuseaddr(socket: &wamr_wasi_socket::TcpListener, reuseaddr: bool) -> io::Result<()> {
         socket.as_ref().set_reuse_addr(reuseaddr)
     }
-}
 }
 
 pub mod udp {
@@ -71,7 +79,9 @@ pub mod udp {
     pub(crate) use wamr_wasi_socket::UdpSocket;
 
     pub fn bind(addr: net::SocketAddr) -> io::Result<wamr_wasi_socket::UdpSocket> {
-        wamr_wasi_socket::UdpSocket::bind(addr)
+        let s = wamr_wasi_socket::UdpSocket::bind(addr)?;
+        s.set_nonblocking(true)?;
+        Ok(s)
     }
 
     pub(crate) fn only_v6(socket: &wamr_wasi_socket::UdpSocket) -> io::Result<bool> {
@@ -79,32 +89,13 @@ pub mod udp {
     }
 }
 
+}
+
 /// Unique id for use as `SelectorId`.
 #[cfg(feature = "net")]
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
-mod waker {
-
-
-    use super::{Selector, Token};
-    use std::io;
-    #[derive(Debug)]
-    pub struct Waker {
-    }
-
-    impl Waker {
-        pub fn new(_selector: &Selector, _stoken: Token) -> io::Result<Waker> {
-            Ok(Waker{})
-        }
-
-        pub fn wake(&self) -> io::Result<()> {
-            Err(io::Error::new(io::ErrorKind::Unsupported, "Wakers are not supported on wasm"))
-        }
-    }
-}
-
 #[allow(unused)]
-pub use waker::Waker;
 
 pub struct Selector {
     #[cfg(feature = "net")]
@@ -176,6 +167,8 @@ impl Selector {
     pub fn select(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
         events.clear();
 
+        let mut closing = vec![];
+
         let mut subscriptions = self.subscriptions();
 
         // If we want to a use a timeout in the `wasi_poll_oneoff()` function
@@ -190,9 +183,7 @@ impl Selector {
 
         debug_assert!(events.capacity() >= length);
 
-        println!("poll start");
         let res = unsafe { wasi::poll(subscriptions.as_ptr(), events.as_mut_ptr(), length) };
-        println!("poll return");
 
         // Remove the timeout subscription we possibly added above.
         if timeout.is_some() {
@@ -209,7 +200,7 @@ impl Selector {
                 // Safety: `poll_oneoff` initialises the `events` for us.
                 unsafe { events.set_len(n_events) };
 
-                let subscriptions = self.subscriptions.lock().unwrap();
+                let mut subscriptions = self.subscriptions.lock().unwrap();
 
                 let mut timeout_index = None;
 
@@ -220,6 +211,10 @@ impl Selector {
                         println!("is timeout event!");
                         timeout_index = Some(i);
                         continue;
+                    }
+
+                    if ev.fd_readwrite.flags & wasi::EVENTRWFLAGS_FD_READWRITE_HANGUP != 0 {
+                        closing.push(i);
                     }
 
                     if let Some((token, _interest, read_state, write_state)) =
@@ -244,6 +239,21 @@ impl Selector {
                     if let Some(index) = timeout_index {
                         events.swap_remove(index);
                     }
+                }
+
+                if !closing.is_empty() {
+                    let closing_fds: Vec<wasi::Fd> = closing
+                        .iter()
+                        .map(|i| events[*i].userdata as wasi::Fd)
+                        .collect();
+                    
+                    subscriptions.retain(|k, _s| !closing_fds.contains(&k));
+
+                    *events = events
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(i, e)| if closing.contains(&i) { None } else { Some(*e) })
+                        .collect();
                 }
 
                 Ok(())

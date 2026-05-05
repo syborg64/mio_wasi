@@ -68,6 +68,7 @@ mod waker {
         }
     }
 }
+#[allow(unused_imports)]
 pub use waker::Waker;
 
 pub struct Selector {
@@ -140,6 +141,8 @@ impl Selector {
     pub fn select(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
         events.clear();
 
+        let mut closing = vec![];
+
         let mut subscriptions = self.subscriptions();
 
         // If we want to a use a timeout in the `wasi_poll_oneoff()` function
@@ -171,7 +174,7 @@ impl Selector {
                 // Safety: `poll_oneoff` initialises the `events` for us.
                 unsafe { events.set_len(n_events) };
 
-                let subscriptions = self.subscriptions.lock().unwrap();
+                let mut subscriptions = self.subscriptions.lock().unwrap();
 
                 let mut timeout_index = None;
 
@@ -181,6 +184,10 @@ impl Selector {
                     if is_timeout_event(ev) {
                         timeout_index = Some(i);
                         continue;
+                    }
+
+                    if ev.fd_readwrite.flags & wasi::EVENTRWFLAGS_FD_READWRITE_HANGUP != 0 {
+                        closing.push(i);
                     }
 
                     if let Some((token, _interest, read_state, write_state)) =
@@ -205,6 +212,21 @@ impl Selector {
                     if let Some(index) = timeout_index {
                         events.swap_remove(index);
                     }
+                }
+
+                if !closing.is_empty() {
+                    let closing_fds: Vec<wasi::Fd> = closing
+                        .iter()
+                        .map(|i| events[*i].userdata as wasi::Fd)
+                        .collect();
+                    
+                    subscriptions.retain(|k, _s| !closing_fds.contains(&k));
+
+                    *events = events
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(i, e)| if closing.contains(&i) { None } else { Some(*e) })
+                        .collect();
                 }
 
                 Ok(())
