@@ -2,17 +2,17 @@
 #![allow(dead_code, unused_macros)]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 
+#[cfg(not(target_os = "wasi"))]
+use std::fs;
 use std::mem::size_of;
 use std::net::SocketAddr;
 use std::ops::BitOr;
-#[cfg(unix)]
-use std::os::unix::io::AsRawFd;
+#[cfg(any(unix, target_os = "wasi"))]
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Once;
 use std::time::Duration;
 use std::{env, fmt, io};
-#[cfg(not(target_os = "wasi"))] 
-use std::fs;
 
 use log::{error, warn};
 use mio::event::Event;
@@ -26,7 +26,8 @@ pub fn init() {
         env_logger::try_init().expect("unable to initialise logger");
 
         // Remove all temporary files from previous test runs.
-        #[cfg(not(target_os = "wasi"))] {
+        #[cfg(not(target_os = "wasi"))]
+        {
             let dir = temp_dir();
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).expect("unable to create temporary directory");
@@ -203,7 +204,7 @@ pub fn assert_would_block<T>(result: io::Result<T>) {
 }
 
 /// Assert that `NONBLOCK` is set on `socket`.
-#[cfg(unix)]
+#[cfg(any(unix, target_os = "wasi"))]
 pub fn assert_socket_non_blocking<S>(socket: &S)
 where
     S: AsRawFd,
@@ -218,7 +219,7 @@ pub fn assert_socket_non_blocking<S>(_: &S) {
 }
 
 /// Assert that `CLOEXEC` is set on `socket`.
-#[cfg(unix)]
+#[cfg(any(unix, target_os = "wasi"))]
 pub fn assert_socket_close_on_exec<S>(socket: &S)
 where
     S: AsRawFd,

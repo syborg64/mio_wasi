@@ -1,4 +1,3 @@
-#![cfg(not(target_os = "wasi"))]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 
 use std::io::{self, Write};
@@ -7,6 +6,7 @@ use std::time::Duration;
 
 use log::{debug, info, trace};
 #[cfg(debug_assertions)]
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 use mio::net::UdpSocket;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Registry, Token};
@@ -195,6 +195,7 @@ fn tcp_register_multiple_event_loops() {
 
 #[test]
 #[cfg(debug_assertions)] // Check is only present when debug assertions are enabled.
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 fn udp_register_multiple_event_loops() {
     init();
 

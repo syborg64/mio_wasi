@@ -1,4 +1,3 @@
-#![cfg(not(target_os = "wasi"))]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 
 use mio::net::TcpListener;
@@ -27,16 +26,28 @@ fn is_send_and_sync() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_listener() {
     smoke_test_tcp_listener(any_local_address(), TcpListener::bind);
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_listener_ipv6() {
     smoke_test_tcp_listener(any_local_ipv6_address(), TcpListener::bind);
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_listener_std() {
     smoke_test_tcp_listener(any_local_address(), |addr| {
         let listener = net::TcpListener::bind(addr).unwrap();
@@ -47,6 +58,10 @@ fn tcp_listener_std() {
     });
 }
 
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn smoke_test_tcp_listener<F>(addr: SocketAddr, make_listener: F)
 where
     F: FnOnce(SocketAddr) -> io::Result<TcpListener>,
@@ -92,6 +107,9 @@ where
 }
 
 #[test]
+/// on target_os = "wasi" with feature = "wasmedge", this test fails.
+/// It is deliberately left as a failure and not silenced because failure isn't for lack of support but incorrect support
+/// The only correct course of action is to fix the behavior, not the test
 fn set_get_ttl() {
     init();
 
@@ -148,6 +166,10 @@ fn registering() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn reregister() {
     let (mut poll, mut events) = init_with_poll();
 
@@ -184,6 +206,10 @@ fn reregister() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn no_events_after_deregister() {
     let (mut poll, mut events) = init_with_poll();
 
@@ -217,6 +243,10 @@ fn no_events_after_deregister() {
 
 /// This tests reregister on successful accept works
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_listener_two_streams() {
     let (mut poll1, mut events) = init_with_poll();
 
@@ -270,6 +300,10 @@ fn tcp_listener_two_streams() {
 
 /// Start `n_connections` connections to `address`. If a `barrier` is provided
 /// it will wait on it after each connection is made before it is dropped.
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn start_connections(
     address: SocketAddr,
     n_connections: usize,

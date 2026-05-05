@@ -1,4 +1,3 @@
-#![cfg(not(target_os = "wasi"))]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 
 use std::net;
@@ -8,7 +7,9 @@ use std::time::Duration;
 use std::{fmt, io};
 
 use mio::event::Source;
-use mio::net::{TcpListener, TcpStream, UdpSocket};
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
+use mio::net::UdpSocket;
+use mio::net::{TcpListener, TcpStream};
 use mio::{event, Events, Interest, Poll, Registry, Token};
 
 mod util;
@@ -68,8 +69,10 @@ fn zero_duration_polls_events() {
     let mut poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(16);
 
-    let listener = net::TcpListener::bind(any_local_address()).unwrap();
+    let listener = mio::net::TcpListener::bind(any_local_address()).unwrap();
     let addr = listener.local_addr().unwrap();
+    let listener = listener.into_std();
+    listener.set_nonblocking(false).unwrap();
 
     let streams: Vec<TcpStream> = (0..3)
         .map(|n| {
@@ -112,6 +115,8 @@ fn poll_closes_fd() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "wasi"), feature = "threads"))]
+#[cfg(panic = "unwind")]
 fn drop_cancels_interest_and_shuts_down() {
     init();
 
@@ -172,6 +177,10 @@ fn drop_cancels_interest_and_shuts_down() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn registry_behind_arc() {
     // `Registry` should work behind an `Arc`, being `Sync` and `Send`.
     init();
@@ -234,6 +243,7 @@ pub fn registry_ops_flow(
 }
 
 #[test]
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 fn registry_operations_are_thread_safe() {
     let (mut poll, mut events) = init_with_poll();
 
@@ -320,6 +330,7 @@ fn registry_operations_are_thread_safe() {
 }
 
 #[test]
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 fn register_during_poll() {
     let (mut poll, mut events) = init_with_poll();
     let registry = poll.registry().try_clone().unwrap();
@@ -368,6 +379,7 @@ fn register_during_poll() {
 // - `reregister` can use different token from `register`
 // - multiple `reregister` are ok
 #[test]
+#[cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 fn reregister_interest_token_usage() {
     let (mut poll, mut events) = init_with_poll();
 
@@ -421,6 +433,10 @@ pub fn double_register_different_token() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn poll_ok_after_cancelling_pending_ops() {
     let (mut poll, mut events) = init_with_poll();
 

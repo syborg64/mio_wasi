@@ -13,7 +13,7 @@ const SERVER: Token = Token(0);
 // Some data we'll send over the connection.
 const DATA: &[u8] = b"Hello world!\n";
 
-#[cfg(any(not(target_os = "wasi"), feature = "wasmedge",  feature = "wamr"))]
+#[cfg(any(not(target_os = "wasi"), feature = "wasmedge", feature = "wamr"))]
 fn main() -> io::Result<()> {
     env_logger::init();
 
@@ -183,7 +183,7 @@ fn interrupted(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::Interrupted
 }
 
-#[cfg(not(any(not(target_os = "wasi"), feature = "wasmedge",  feature = "wamr")))]
+#[cfg(not(any(not(target_os = "wasi"), feature = "wasmedge", feature = "wamr")))]
 fn main() {
     panic!("can't bind to an address with wasi")
 }

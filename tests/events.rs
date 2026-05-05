@@ -1,3 +1,4 @@
+//! wasi does not support waker
 #![cfg(not(target_os = "wasi"))]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 

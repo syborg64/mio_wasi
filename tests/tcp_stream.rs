@@ -1,4 +1,3 @@
-#![cfg(not(target_os = "wasi"))]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 
 use std::io::{self, IoSlice, IoSliceMut, Read, Write};
@@ -16,10 +15,12 @@ use mio::{Interest, Token};
 mod util;
 #[cfg(not(target_os = "windows"))]
 use util::init;
+#[cfg(unix)]
+use util::set_linger_zero;
 use util::{
     any_local_address, any_local_ipv6_address, assert_send, assert_socket_close_on_exec,
     assert_socket_non_blocking, assert_sync, assert_would_block, expect_events, expect_no_events,
-    init_with_poll, set_linger_zero, ExpectEvent, Readiness,
+    init_with_poll, ExpectEvent, Readiness,
 };
 
 const DATA1: &[u8] = b"Hello world!";
@@ -514,6 +515,10 @@ fn no_events_after_deregister() {
     windows,
     ignore = "fails on Windows; client read closed events are not triggered"
 )]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_shutdown_client_read_close_event() {
     let (mut poll, mut events) = init_with_poll();
     let barrier = Arc::new(Barrier::new(2));
@@ -550,6 +555,10 @@ fn tcp_shutdown_client_read_close_event() {
     any(target_os = "android", target_os = "illumos", target_os = "linux"),
     ignore = "fails; client write_closed events are not found"
 )]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_shutdown_client_write_close_event() {
     let (mut poll, mut events) = init_with_poll();
     let barrier = Arc::new(Barrier::new(2));
@@ -581,6 +590,10 @@ fn tcp_shutdown_client_write_close_event() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_shutdown_server_write_close_event() {
     let (mut poll, mut events) = init_with_poll();
     let barrier = Arc::new(Barrier::new(2));
@@ -728,6 +741,10 @@ fn echo_listener(addr: SocketAddr, n_connections: usize) -> (thread::JoinHandle<
 /// Start a listener that accepts `n_connections` connections on the returned
 /// address. If a barrier is provided it will wait on it before closing the
 /// connection.
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn start_listener(
     n_connections: usize,
     barrier: Option<Arc<Barrier>>,
@@ -756,6 +773,7 @@ fn start_listener(
 }
 
 #[test]
+#[cfg(unix)]
 fn hup_event_on_disconnect() {
     use mio::net::TcpListener;
 
