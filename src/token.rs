@@ -17,12 +17,27 @@
 ///
 /// [`slab`]: https://crates.io/crates/slab
 ///
-#[cfg_attr(all(feature = "os-poll", feature = "net"), doc = "```")]
-#[cfg_attr(not(all(feature = "os-poll", feature = "net")), doc = "```ignore")]
+#[cfg_attr(
+    all(
+        feature = "os-poll",
+        feature = "net",
+        any(not(target_os = "wasi"), feature = "threads")
+    ),
+    doc = "```"
+)]
+#[cfg_attr(
+    not(all(
+        feature = "os-poll",
+        feature = "net",
+        any(not(target_os = "wasi"), feature = "threads")
+    )),
+    doc = "```ignore"
+)]
 /// # use std::error::Error;
 /// # fn main() -> Result<(), Box<dyn Error>> {
 /// use mio::{Events, Interest, Poll, Token};
 /// use mio::net::TcpListener;
+/// use mio::net::TcpStream;
 ///
 /// use std::thread;
 /// use std::io::{self, Read};
@@ -53,8 +68,6 @@
 /// // Spawn a thread that will connect a bunch of sockets then close them
 /// let addr = listener.local_addr()?;
 /// thread::spawn(move || {
-///     use mio::net::TcpStream;
-///
 ///     // +1 here is to connect an extra socket to signal the socket to close
 ///     for _ in 0..(MAX_SOCKETS+1) {
 ///         // Connect then drop the socket

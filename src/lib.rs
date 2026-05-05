@@ -66,7 +66,7 @@ pub use event::Events;
 pub use interest::Interest;
 pub use poll::{Poll, Registry};
 pub use token::Token;
-#[cfg(any(not(target_os = "wasi"), feature = "wasmedge", feature = "wamr"))]
+#[cfg(not(target_os = "wasi"))]
 pub use waker::Waker;
 
 #[cfg(all(unix, feature = "os-ext"))]

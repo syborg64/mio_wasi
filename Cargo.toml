@@ -34,10 +34,7 @@ path = "src/lib.rs"
 # For documentation of features see the `mio::features` module.
 [features]
 # By default Mio only provides a shell implementation.
-default = ["wamr", "os-poll", "net", "log"]
-
-# These are the same defaults excluding the runtime platform
-default-no-platform = ["os-poll", "net", "log"]
+default = ["os-poll", "net", "log"]
 
 # Enables the `Poll` and `Registry` types.
 os-poll = []
@@ -50,10 +47,17 @@ os-ext = [
 # Enables `mio::net` module containing networking primitives.
 net = []
 
+# wasmedge runtime support
 wasmedge = ["dep:wasmedge_wasi_socket"]
+
+# wamr runtime support
 wamr = ["dep:wamr_wasi_socket"]
 
+# 'wasmtime runtime support' -- not actually implemented
 wasmtime = []
+
+# mark this to enable std::thread because wasm32-wasip1-threads cfg is nightly only 
+threads = []
 
 [dependencies]
 log = { version = "0.4.8", optional = true }

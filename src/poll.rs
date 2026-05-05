@@ -355,8 +355,22 @@ impl Poll {
     ///
     /// A basic example -- establishing a `TcpStream` connection.
     ///
-    #[cfg_attr(all(feature = "os-poll", feature = "net"), doc = "```")]
-    #[cfg_attr(not(all(feature = "os-poll", feature = "net")), doc = "```ignore")]
+    #[cfg_attr(
+        all(
+            feature = "os-poll",
+            feature = "net",
+            any(not(target_os = "wasi"), feature = "threads")
+        ),
+        doc = "```"
+    )]
+    #[cfg_attr(
+        not(all(
+            feature = "os-poll",
+            feature = "net",
+            any(not(target_os = "wasi"), feature = "threads")
+        )),
+        doc = "```ignore"
+    )]
     /// # use std::error::Error;
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use mio::{Events, Poll, Interest, Token};
@@ -372,6 +386,8 @@ impl Poll {
     ///
     /// // Spawn a thread to accept the socket
     /// thread::spawn(move || {
+    ///     let server = server.into_std();
+    ///     server.set_nonblocking(false).unwrap();
     ///     let _ = server.accept();
     /// });
     ///
@@ -672,6 +688,7 @@ impl Registry {
     /// Internal check to ensure only a single `Waker` is active per [`Poll`]
     /// instance.
     #[cfg(debug_assertions)]
+    #[cfg(not(target_os = "wasi"))]
     pub(crate) fn register_waker(&self) {
         assert!(
             !self.selector.register_waker(),
