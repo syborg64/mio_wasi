@@ -18,6 +18,8 @@ use util::{
 #[cfg(unix)]
 use util::set_linger_zero;
 
+use crate::util::std_listener;
+
 const LISTEN: Token = Token(0);
 const CLIENT: Token = Token(1);
 const SERVER: Token = Token(2);
@@ -107,8 +109,7 @@ fn connect() {
         shutdown: bool,
     }
 
-    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, addr) = std_listener("127.0.0.1:0".parse().unwrap()).unwrap();
 
     let (tx, rx) = channel();
     let (tx2, rx2) = channel();
@@ -187,8 +188,7 @@ fn read() {
         shutdown: bool,
     }
 
-    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, addr) = std_listener("127.0.0.1:0".parse().unwrap()).unwrap();
 
     let handle = thread::spawn(move || {
         let mut stream = listener.accept().unwrap().0;
@@ -250,8 +250,7 @@ fn peek() {
         shutdown: bool,
     }
 
-    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, addr) = std_listener("127.0.0.1:0".parse().unwrap()).unwrap();
 
     let handle = thread::spawn(move || {
         let mut stream = listener.accept().unwrap().0;
@@ -319,8 +318,7 @@ fn write() {
         shutdown: bool,
     }
 
-    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, addr) = std_listener("127.0.0.1:0".parse().unwrap()).unwrap();
 
     let handle = thread::spawn(move || {
         let mut stream = listener.accept().unwrap().0;
@@ -454,8 +452,7 @@ fn multiple_writes_immediate_success() {
     init();
 
     const N: usize = 16;
-    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, addr) = std_listener("127.0.0.1:0".parse().unwrap()).unwrap();
 
     let handle = thread::spawn(move || {
         let mut s = listener.accept().unwrap().0;
@@ -629,8 +626,7 @@ fn write_error() {
     let mut events = Events::with_capacity(16);
     let (tx, rx) = channel();
 
-    let listener = net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, addr) = std_listener("127.0.0.1:0".parse().unwrap()).unwrap();
     let handle = thread::spawn(move || {
         let (conn, _addr) = listener.accept().unwrap();
         rx.recv().unwrap();
@@ -709,8 +705,7 @@ fn write_shutdown() {
 
     let mut poll = Poll::new().unwrap();
 
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, addr) = std_listener("127.0.0.1:0".parse().unwrap()).unwrap();
 
     let mut client = TcpStream::connect(addr).unwrap();
     poll.registry()
@@ -774,6 +769,7 @@ fn local_addr_ready() {
         accepted: None,
         shutdown: false,
     };
+    let mut keep_alive = None;
 
     while !handler.shutdown {
         poll.poll(&mut events, None).unwrap();
@@ -788,16 +784,13 @@ fn local_addr_ready() {
                     handler.accepted = Some(sock);
                 }
                 SERVER => {
-                    handler.accepted.as_ref().unwrap().peer_addr().unwrap();
-                    handler.accepted.as_ref().unwrap().local_addr().unwrap();
-                    let n = handler
-                        .accepted
-                        .as_mut()
-                        .unwrap()
-                        .write(&[1, 2, 3])
-                        .unwrap();
-                    assert_eq!(n, 3);
-                    handler.accepted = None;
+                    if let Some(mut accepted) = handler.accepted.take() {
+                        accepted.peer_addr().unwrap();
+                        accepted.local_addr().unwrap();
+                        let n = accepted.write(&[1, 2, 3]).unwrap();
+                        assert_eq!(n, 3);
+                        keep_alive = Some(accepted);
+                    }
                 }
                 CLIENT => {
                     handler.connected.peer_addr().unwrap();
@@ -808,6 +801,7 @@ fn local_addr_ready() {
             }
         }
     }
+    drop(keep_alive);
 }
 
 #[test]

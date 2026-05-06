@@ -377,3 +377,13 @@ macro_rules! expect_read {
         assert_eq!(address, source);
     }};
 }
+
+/// create an std::net::TcpListener using the mio sys impl instead of std
+pub fn std_listener(a: SocketAddr) -> io::Result<(std::net::TcpListener, SocketAddr)> 
+{
+    let listener = mio::net::TcpListener::bind(a)?;
+    let addr = listener.local_addr()?;
+    let listener = listener.into_std();
+    listener.set_nonblocking(false)?;
+    Ok((listener, addr))
+}

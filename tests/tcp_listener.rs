@@ -16,6 +16,8 @@ use util::{
     init, init_with_poll, ExpectEvent,
 };
 
+use crate::util::std_listener;
+
 const ID1: Token = Token(0);
 const ID2: Token = Token(1);
 
@@ -50,7 +52,7 @@ fn tcp_listener_ipv6() {
 )]
 fn tcp_listener_std() {
     smoke_test_tcp_listener(any_local_address(), |addr| {
-        let listener = net::TcpListener::bind(addr).unwrap();
+        let listener = std_listener(addr).unwrap().0;
         // `std::net::TcpListener`s are blocking by default, so make sure it is in
         // non-blocking mode before wrapping in a Mio equivalent.
         listener.set_nonblocking(true).unwrap();
@@ -301,8 +303,8 @@ fn tcp_listener_two_streams() {
 /// Start `n_connections` connections to `address`. If a `barrier` is provided
 /// it will wait on it after each connection is made before it is dropped.
 #[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
+    all(target_os = "wasi"),
+    ignore = "needs std::TcpStream blocking behavior"
 )]
 fn start_connections(
     address: SocketAddr,

@@ -23,6 +23,8 @@ use util::{
     init_with_poll, ExpectEvent, Readiness,
 };
 
+use crate::util::std_listener;
+
 const DATA1: &[u8] = b"Hello world!";
 const DATA2: &[u8] = b"Hello mars!";
 // TODO: replace with `DATA1.len()` once `const_slice_len` is stable.
@@ -39,16 +41,28 @@ fn is_send_and_sync() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_stream_ipv4() {
     smoke_test_tcp_stream(any_local_address(), TcpStream::connect);
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_stream_ipv6() {
     smoke_test_tcp_stream(any_local_ipv6_address(), TcpStream::connect);
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn tcp_stream_std() {
     smoke_test_tcp_stream(any_local_address(), |addr| {
         let stream = net::TcpStream::connect(addr).unwrap();
@@ -397,7 +411,7 @@ fn shutdown_both() {
     }
 
     let err = stream.write(DATA2).unwrap_err();
-    #[cfg(unix)]
+    #[cfg(any(unix, target_os = "wasi"))]
     assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
     #[cfg(windows)]
     assert_eq!(err.kind(), io::ErrorKind::ConnectionAborted);
@@ -627,8 +641,7 @@ fn tcp_shutdown_server_write_close_event() {
 fn tcp_reset_close_event() {
     let (mut poll, mut events) = init_with_poll();
 
-    let listener = net::TcpListener::bind(any_local_address()).unwrap();
-    let sockaddr = listener.local_addr().unwrap();
+    let (listener, sockaddr) = std_listener(any_local_address()).unwrap();
     let mut stream = TcpStream::connect(sockaddr).unwrap();
 
     poll.registry()
@@ -709,8 +722,7 @@ fn tcp_shutdown_client_both_close_event() {
 fn echo_listener(addr: SocketAddr, n_connections: usize) -> (thread::JoinHandle<()>, SocketAddr) {
     let (sender, receiver) = channel();
     let thread_handle = thread::spawn(move || {
-        let listener = net::TcpListener::bind(addr).unwrap();
-        let local_address = listener.local_addr().unwrap();
+        let (listener, local_address) = std_listener(addr).unwrap();
         sender.send(local_address).unwrap();
 
         let mut buf = [0; 128];
@@ -752,8 +764,7 @@ fn start_listener(
 ) -> (thread::JoinHandle<()>, SocketAddr) {
     let (sender, receiver) = channel();
     let thread_handle = thread::spawn(move || {
-        let listener = net::TcpListener::bind(any_local_address()).unwrap();
-        let local_address = listener.local_addr().unwrap();
+        let (listener, local_address) = std_listener(any_local_address()).unwrap();
         sender.send(local_address).unwrap();
 
         for _ in 0..n_connections {
@@ -819,11 +830,12 @@ fn hup_event_on_disconnect() {
 #[test]
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn priority_event_on_oob_data() {
+    use crate::util::std_listener;
+
     let (mut poll, mut events) = init_with_poll();
     let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 
-    let listener = std::net::TcpListener::bind(addr).unwrap();
-    let addr = listener.local_addr().unwrap();
+    let (listener, sockaddr) = std_listener(addr).unwrap();
 
     let mut client = TcpStream::connect(addr).unwrap();
     poll.registry()
