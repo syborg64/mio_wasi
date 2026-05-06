@@ -354,11 +354,8 @@ pub mod event {
         event.type_ == wasi::EVENTTYPE_FD_WRITE
     }
 
-    pub fn is_error(_: &Event) -> bool {
-        // Not supported? It could be that `wasi::Event.error` could be used for
-        // this, but the docs say `error that occurred while processing the
-        // subscription request`, so it's checked in `Select::select` already.
-        false
+    pub fn is_error(event: &Event) -> bool {
+        event.error != 0
     }
 
     pub fn is_read_closed(event: &Event) -> bool {
