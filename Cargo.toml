@@ -1,6 +1,6 @@
 [package]
 edition = "2018"
-name = "mio_wasi"
+name = "mio"
 # When releasing to crates.io:
 # - Update CHANGELOG.md.
 # - Create git tag
