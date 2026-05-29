@@ -60,8 +60,8 @@ fn tcp_stream_ipv6() {
 
 #[test]
 #[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
+    all(target_os = "wasi"),
+    ignore = "std::TcpStream not available in wasi"
 )]
 fn tcp_stream_std() {
     smoke_test_tcp_stream(any_local_address(), |addr| {

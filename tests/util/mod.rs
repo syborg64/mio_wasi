@@ -379,6 +379,7 @@ macro_rules! expect_read {
 }
 
 /// create an std::net::TcpListener using the mio sys impl instead of std
+#[cfg(target_os = "wasi")]
 pub fn std_listener(a: SocketAddr) -> io::Result<(std::net::TcpListener, SocketAddr)> 
 {
     let listener = mio::net::TcpListener::bind(a)?;
@@ -387,3 +388,12 @@ pub fn std_listener(a: SocketAddr) -> io::Result<(std::net::TcpListener, SocketA
     listener.set_nonblocking(false)?;
     Ok((listener, addr))
 }
+
+/// create a normal std::net::TcpListener
+#[cfg(not(target_os = "wasi"))]
+pub fn std_listener(a: SocketAddr) -> io::Result<(std::net::TcpListener, SocketAddr)> 
+{
+    let listener = std::net::TcpListener::bind(a)?;
+    let addr = listener.local_addr()?;
+    Ok((listener, addr))
+}    

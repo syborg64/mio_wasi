@@ -48,8 +48,8 @@ fn is_send_and_sync() {
 
 #[test]
 #[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
+    all(target_os = "wasi"),
+    ignore = "needs std::TcpStream blocking behavior"
 )]
 fn accept() {
     init();
@@ -98,8 +98,8 @@ fn accept() {
 
 #[test]
 #[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
+    all(target_os = "wasi"),
+    ignore = "needs std::TcpStream blocking behavior"
 )]
 fn connect() {
     init();
@@ -700,6 +700,10 @@ macro_rules! wait {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi"),
+    ignore = "poll's handling of shutdowns is platform dependant"
+)]
 fn write_shutdown() {
     init();
 

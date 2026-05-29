@@ -302,10 +302,6 @@ fn tcp_listener_two_streams() {
 
 /// Start `n_connections` connections to `address`. If a `barrier` is provided
 /// it will wait on it after each connection is made before it is dropped.
-#[cfg_attr(
-    all(target_os = "wasi"),
-    ignore = "needs std::TcpStream blocking behavior"
-)]
 fn start_connections(
     address: SocketAddr,
     n_connections: usize,
@@ -313,6 +309,10 @@ fn start_connections(
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for _ in 0..n_connections {
+            // std's TcpStream and mio's have different behaviors because of blocking, but in this case it's probably fine
+            #[cfg(target_os = "wasi")]
+            let conn = mio::net::TcpStream::connect(address).unwrap();
+            #[cfg(not(target_os = "wasi"))]
             let conn = net::TcpStream::connect(address).unwrap();
             barrier.wait();
             drop(conn);

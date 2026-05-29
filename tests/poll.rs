@@ -69,10 +69,7 @@ fn zero_duration_polls_events() {
     let mut poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(16);
 
-    let listener = mio::net::TcpListener::bind(any_local_address()).unwrap();
-    let addr = listener.local_addr().unwrap();
-    let listener = listener.into_std();
-    listener.set_nonblocking(false).unwrap();
+    let (listener, addr) = util::std_listener(any_local_address()).unwrap();
 
     let streams: Vec<TcpStream> = (0..3)
         .map(|n| {
