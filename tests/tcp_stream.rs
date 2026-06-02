@@ -96,6 +96,7 @@ where
     );
 
     let mut buf = [0; 16];
+    #[cfg(any(not(target_os = "wasi"), feature = "wasmedge"))]
     assert_would_block(stream.peek(&mut buf));
     assert_would_block(stream.read(&mut buf));
 
@@ -114,6 +115,7 @@ where
         vec![ExpectEvent::new(ID1, Interest::READABLE)],
     );
 
+    #[cfg(any(not(target_os = "wasi"), feature = "wasmedge"))]
     expect_read!(stream.peek(&mut buf), DATA1);
     expect_read!(stream.read(&mut buf), DATA1);
 
@@ -490,6 +492,10 @@ fn reregistering() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn no_events_after_deregister() {
     let (mut poll, mut events) = init_with_poll();
 
@@ -512,6 +518,7 @@ fn no_events_after_deregister() {
 
     // Also, write should work
     let mut buf = [0; 16];
+    #[cfg(any(not(target_os = "wasi"), feature = "wasmedge"))]
     assert_would_block(stream.peek(&mut buf));
     assert_would_block(stream.read(&mut buf));
 
@@ -532,6 +539,10 @@ fn no_events_after_deregister() {
 #[cfg_attr(
     all(target_os = "wasi", not(feature = "threads")),
     ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
+#[cfg_attr(
+    all(target_os = "wasi", feature = "threads", feature = "wamr"),
+    ignore = "wamr poll does not carry peer closing events"
 )]
 fn tcp_shutdown_client_read_close_event() {
     let (mut poll, mut events) = init_with_poll();
@@ -573,6 +584,10 @@ fn tcp_shutdown_client_read_close_event() {
     all(target_os = "wasi", not(feature = "threads")),
     ignore = "needs std::thread::spawn; not available on wasi without threads"
 )]
+#[cfg_attr(
+    all(target_os = "wasi", feature = "threads", feature = "wamr"),
+    ignore = "wamr poll does not carry peer closing events"
+)]
 fn tcp_shutdown_client_write_close_event() {
     let (mut poll, mut events) = init_with_poll();
     let barrier = Arc::new(Barrier::new(2));
@@ -608,6 +623,10 @@ fn tcp_shutdown_client_write_close_event() {
     all(target_os = "wasi", not(feature = "threads")),
     ignore = "needs std::thread::spawn; not available on wasi without threads"
 )]
+#[cfg_attr(
+    all(target_os = "wasi", feature = "threads", feature = "wamr"),
+    ignore = "wamr poll does not carry peer closing events"
+)]
 fn tcp_shutdown_server_write_close_event() {
     let (mut poll, mut events) = init_with_poll();
     let barrier = Arc::new(Barrier::new(2));
@@ -638,6 +657,10 @@ fn tcp_shutdown_server_write_close_event() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", feature = "wamr"),
+    ignore = "wamr poll does not carry peer closing events"
+)]
 fn tcp_reset_close_event() {
     let (mut poll, mut events) = init_with_poll();
 
@@ -687,6 +710,10 @@ fn tcp_reset_close_event() {
 #[cfg_attr(
     any(target_os = "illumos"),
     ignore = "fails; client write_closed events are not found"
+)]
+#[cfg_attr(
+    all(target_os = "wasi", feature = "wamr"),
+    ignore = "wamr poll does not carry peer closing events"
 )]
 fn tcp_shutdown_client_both_close_event() {
     let (mut poll, mut events) = init_with_poll();
