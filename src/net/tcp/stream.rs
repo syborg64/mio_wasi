@@ -254,10 +254,7 @@ impl TcpStream {
     /// the field in the process. This can be useful for checking errors between
     /// calls.
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        #[cfg(any(not(target_os = "wasi"), all(not(feature = "wasmedge"), not(feature = "wamr"))))]
         return self.inner.take_error();
-        #[cfg(all(target_os = "wasi", any(feature = "wasmedge", feature = "wamr")))]
-        Ok(None)
     }
 
     /// Receives data on the socket from the remote address to which it is
@@ -267,13 +264,7 @@ impl TcpStream {
     /// Successive calls return the same data. This is accomplished by passing
     /// `MSG_PEEK` as a flag to the underlying recv system call.
     pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
-        #[cfg(any(not(target_os = "wasi"), all(not(feature = "wasmedge"), not(feature = "wamr"))))]
         return self.inner.peek(buf);
-        #[cfg(all(target_os = "wasi", any(feature = "wasmedge", feature = "wamr")))]
-        {
-            let _ = buf;
-            Ok(0)
-        }
     }
 
     /// Execute an I/O operation ensuring that the socket receives more events

@@ -373,3 +373,14 @@ impl Clone for SelectorId {
         }
     }
 }
+
+#[cfg(all(target_os = "wasi", any(feature = "wamr", feature = "wasmedge")))]
+impl<T> IoSource<T> {
+    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
+        Ok(None)
+    }
+
+    pub fn peek(&self, _buf: &mut [u8]) -> io::Result<usize> {
+        return Ok(0);
+    }
+}
