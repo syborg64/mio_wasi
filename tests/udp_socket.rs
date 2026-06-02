@@ -95,6 +95,10 @@ fn unconnected_udp_socket_ipv6() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "wasi",
+    ignore = "needs std::net::UdpSocket not available on wasi"
+)]
 fn unconnected_udp_socket_std() {
     let socket1 = net::UdpSocket::bind(any_local_address()).unwrap();
     let socket2 = net::UdpSocket::bind(any_local_address()).unwrap();
@@ -145,6 +149,7 @@ fn smoke_test_unconnected_udp_socket(mut socket1: UdpSocket, mut socket2: UdpSoc
     );
 
     let mut buf = [0; 20];
+    #[cfg(not(target_os = "wasi"))]
     assert_would_block(socket1.peek_from(&mut buf));
     assert_would_block(socket1.recv_from(&mut buf));
 
@@ -160,7 +165,9 @@ fn smoke_test_unconnected_udp_socket(mut socket1: UdpSocket, mut socket2: UdpSoc
         ],
     );
 
+    #[cfg(not(target_os = "wasi"))]
     expect_read!(socket1.peek_from(&mut buf), DATA2, address2);
+    #[cfg(not(target_os = "wasi"))]
     expect_read!(socket2.peek_from(&mut buf), DATA1, address1);
 
     expect_read!(socket1.recv_from(&mut buf), DATA2, address2);
@@ -304,6 +311,10 @@ fn connected_udp_socket_ipv6() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "wasi",
+    ignore = "needs std::net::UdpSocket not available on wasi"
+)]
 fn connected_udp_socket_std() {
     let socket1 = net::UdpSocket::bind(any_local_address()).unwrap();
     let address1 = socket1.local_addr().unwrap();
@@ -358,6 +369,7 @@ fn smoke_test_connected_udp_socket(mut socket1: UdpSocket, mut socket2: UdpSocke
     );
 
     let mut buf = [0; 20];
+    #[cfg(not(target_os = "wasi"))]
     assert_would_block(socket1.peek(&mut buf));
     assert_would_block(socket1.recv(&mut buf));
 
@@ -374,7 +386,9 @@ fn smoke_test_connected_udp_socket(mut socket1: UdpSocket, mut socket2: UdpSocke
     );
 
     let mut buf = [0; 20];
+    #[cfg(not(target_os = "wasi"))]
     expect_read!(socket1.peek(&mut buf), DATA2);
+    #[cfg(not(target_os = "wasi"))]
     expect_read!(socket2.peek(&mut buf), DATA1);
 
     expect_read!(socket1.recv(&mut buf), DATA2);
@@ -575,6 +589,7 @@ fn unconnected_udp_socket_connected_methods() {
     // Receive methods don't require the socket to be connected, you just won't
     // know the sender.
     let mut buf = [0; 20];
+    #[cfg(not(target_os = "wasi"))]
     expect_read!(socket2.peek(&mut buf), DATA1);
     expect_read!(socket2.recv(&mut buf), DATA1);
 
@@ -618,10 +633,10 @@ fn connected_udp_socket_unconnected_methods() {
     // Can't use `send_to`.
     // Linux (and Android) and Windows actually allow `send_to` even if the
     // socket is connected.
-    #[cfg(not(any(target_os = "android", target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(target_os = "android", target_os = "linux", target_os = "wasi", target_os = "windows")))]
     assert_error(socket1.send_to(DATA1, address2), "already connected");
     // Even if the address is the same.
-    #[cfg(not(any(target_os = "android", target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(target_os = "android", target_os = "linux", target_os = "wasi", target_os = "windows")))]
     assert_error(socket1.send_to(DATA1, address3), "already connected");
 
     checked_write!(socket2.send_to(DATA2, address3));
@@ -633,6 +648,7 @@ fn connected_udp_socket_unconnected_methods() {
     );
 
     let mut buf = [0; 20];
+    #[cfg(not(target_os = "wasi"))]
     expect_read!(socket3.peek_from(&mut buf), DATA2, address2);
     expect_read!(socket3.recv_from(&mut buf), DATA2, address2);
 
@@ -744,7 +760,7 @@ fn send_packets(
     barrier: Arc<Barrier>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        let socket = net::UdpSocket::bind(any_local_address()).unwrap();
+        let socket = mio::net::UdpSocket::bind(any_local_address()).unwrap();
         for _ in 0..n_packets {
             barrier.wait();
             checked_write!(socket.send_to(DATA1, address));

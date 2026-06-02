@@ -1,4 +1,5 @@
 #![cfg(all(feature = "os-poll", feature = "net"))]
+#![cfg(any(not(target_os = "wasi"), feature = "threads"))]
 
 use std::io::{self, IoSlice, IoSliceMut, Read, Write};
 use std::net::{self, Shutdown, SocketAddr};
@@ -41,19 +42,11 @@ fn is_send_and_sync() {
 }
 
 #[test]
-#[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
-)]
 fn tcp_stream_ipv4() {
     smoke_test_tcp_stream(any_local_address(), TcpStream::connect);
 }
 
 #[test]
-#[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
-)]
 fn tcp_stream_ipv6() {
     smoke_test_tcp_stream(any_local_ipv6_address(), TcpStream::connect);
 }
@@ -492,10 +485,6 @@ fn reregistering() {
 }
 
 #[test]
-#[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
-)]
 fn no_events_after_deregister() {
     let (mut poll, mut events) = init_with_poll();
 
@@ -535,10 +524,6 @@ fn no_events_after_deregister() {
 #[cfg_attr(
     windows,
     ignore = "fails on Windows; client read closed events are not triggered"
-)]
-#[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
 )]
 #[cfg_attr(
     all(target_os = "wasi", feature = "threads", feature = "wamr"),
@@ -581,10 +566,6 @@ fn tcp_shutdown_client_read_close_event() {
     ignore = "fails; client write_closed events are not found"
 )]
 #[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
-)]
-#[cfg_attr(
     all(target_os = "wasi", feature = "threads", feature = "wamr"),
     ignore = "wamr poll does not carry peer closing events"
 )]
@@ -619,10 +600,6 @@ fn tcp_shutdown_client_write_close_event() {
 }
 
 #[test]
-#[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
-)]
 #[cfg_attr(
     all(target_os = "wasi", feature = "threads", feature = "wamr"),
     ignore = "wamr poll does not carry peer closing events"
@@ -780,10 +757,6 @@ fn echo_listener(addr: SocketAddr, n_connections: usize) -> (thread::JoinHandle<
 /// Start a listener that accepts `n_connections` connections on the returned
 /// address. If a barrier is provided it will wait on it before closing the
 /// connection.
-#[cfg_attr(
-    all(target_os = "wasi", not(feature = "threads")),
-    ignore = "needs std::thread::spawn; not available on wasi without threads"
-)]
 fn start_listener(
     n_connections: usize,
     barrier: Option<Arc<Barrier>>,
