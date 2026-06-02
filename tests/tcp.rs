@@ -408,9 +408,7 @@ fn connect_then_close() {
     }
 }
 
-/// todo: poll seems to not respected already closed sockets ?
 #[test]
-#[cfg_attr(target_os = "wasi", ignore = "bug is identified and a fix is planned")]
 fn listen_then_close() {
     init();
 

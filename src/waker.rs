@@ -1,4 +1,3 @@
-#![cfg(not(target_os = "wasi"))]
 use crate::{sys, Registry, Token};
 
 use std::io;

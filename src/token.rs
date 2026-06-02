@@ -21,7 +21,7 @@
     all(
         feature = "os-poll",
         feature = "net",
-        any(not(target_os = "wasi"), feature = "threads")
+        feature = "threads",
     ),
     doc = "```"
 )]
@@ -29,7 +29,7 @@
     not(all(
         feature = "os-poll",
         feature = "net",
-        any(not(target_os = "wasi"), feature = "threads")
+        feature = "threads",
     )),
     doc = "```ignore"
 )]

@@ -1,4 +1,4 @@
-#![cfg(not(target_os = "wasi"))]
+#![cfg(any(not(target_os = "wasi"), feature = "wamr"))]
 #![cfg(all(feature = "os-poll", feature = "net"))]
 
 use mio::{Events, Poll, Token, Waker};
@@ -46,6 +46,10 @@ fn waker_multiple_wakeups_same_thread() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn waker_wakeup_different_thread() {
     init();
 
@@ -69,6 +73,10 @@ fn waker_wakeup_different_thread() {
 }
 
 #[test]
+#[cfg_attr(
+    all(target_os = "wasi", not(feature = "threads")),
+    ignore = "needs std::thread::spawn; not available on wasi without threads"
+)]
 fn waker_multiple_wakeups_different_thread() {
     init();
 

@@ -2,17 +2,110 @@
 use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::io;
-use std::os::fd::RawFd;
+use std::os::fd::{AsRawFd, RawFd};
 use std::sync::atomic::AtomicBool;
 #[cfg(feature = "net")]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use crate::Registry;
 #[cfg(feature = "net")]
 use crate::{Interest, Token};
+use ::wasi::ERRNO_BADF;
+use wamr_wasi_socket::socket::{AddressFamily, Socket, SocketType};
 use wamr_wasi_socket::wasi_poll as wasi;
+
+#[derive(Clone, Default)]
+pub struct Waker(pub(self) Arc<Mutex<WakerInner>>);
+
+impl std::fmt::Debug for Waker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Ok(waker) = self.0.try_lock() {
+            waker.fmt(f)
+        } else {
+            f.debug_tuple("Waker (locked)").field(&self.0).finish()
+        }
+    }
+}
+impl Waker {
+    pub fn new(selector: &Selector, token: Token) -> io::Result<Waker> {
+        selector.waker(token)
+    }
+
+    pub fn wake(&self) -> io::Result<()> {
+        self.0.lock().unwrap().wake()?;
+        return Ok(());
+    }
+}
+
+/// Poll State machine
+/// 
+/// Transitioning out of the [`PollState::Polling`] state will [`Drop::drop`]
+/// the socket which will wake the poll call
+#[derive(Debug, Default)]
+pub enum PollState {
+    #[default]
+    /// Default state: causes next [`Selector::select`] call to run poll to completion
+    /// 
+    /// Next state:
+    ///  - -> Polling : when the [`Selector::do_poll`] function is called
+    Reset,
+
+    /// Polling in an other thread
+    /// 
+    /// Next states:
+    ///  - -> Finished : when the poll call terminates
+    ///  - -> Reset : when an internal event causes the poll to rerun
+    ///  - -> WakerEvent : when a waker wakes
+    Polling(Socket),
+
+    /// Waking state: the current or next call to [`Selector::select`] will return early with a Waker event
+    /// 
+    /// Next states:
+    ///  - -> Reset : when the waker event is processed and the [`Selector::select`] function returns
+    WakerEvent,
+
+    /// Bookkeeping: [`Selector::do_poll`] is returning and hasn't yet rearmed the state
+    /// 
+    /// Next states:
+    ///  - -> Reset : when the output is processed and the [`Selector::select`] function returns
+    Finished,
+}
+
+#[derive(Debug, Default)]
+struct WakerInner {
+    pub(self) token: Option<Token>,
+    pub(self) state: PollState,
+}
+
+impl WakerInner {
+    pub fn wake(&mut self) -> io::Result<()> {
+        self.state = PollState::WakerEvent;
+        Ok(())
+    }
+
+    pub fn wake_rerun(&mut self) -> io::Result<()> {
+        // only set rerun if the socket is currently polling
+        // avoid a race condition between [`wake`] and [`wake_rerun`] leading to a rerun
+        if matches!(self.state, PollState::Polling(_)) {
+            self.state = PollState::Reset;
+        }
+        Ok(())
+    }
+
+    pub fn event(&self) -> wasi::Event {
+        wasi::Event {
+            userdata: self.token.map(|t| t.0).unwrap_or_default() as u64,
+            error: 0,
+            type_: wasi::EVENTTYPE_FD_READ,
+            fd_readwrite: wasi::EventFdReadwrite {
+                nbytes: 0,
+                flags: 0,
+            },
+        }
+    }
+}
 
 cfg_net! {
 
@@ -96,16 +189,23 @@ pub mod udp {
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 #[allow(unused)]
-
+/// Safety: lock order dependency: self.subscriptions can only be locked after self.waker
 pub struct Selector {
     #[cfg(feature = "net")]
     id: usize,
     /// Subscriptions (reads events) we're interested in.
     subscriptions:
         Arc<Mutex<HashMap<wasi::Fd, (Token, Interest, Arc<AtomicBool>, Arc<AtomicUsize>)>>>,
+    /// waker system for this Selector
+    waker: Waker,
 }
 
 impl Selector {
+    pub(crate) fn waker(&self, token: Token) -> io::Result<Waker> {
+        self.waker.0.lock().unwrap().token = Some(token);
+        Ok(self.waker.clone())
+    }
+
     fn subscriptions(&self) -> Vec<wasi::Subscription> {
         let subscriptions = self.subscriptions.lock().unwrap();
         let mut subs = Vec::with_capacity(subscriptions.len() * 2);
@@ -149,6 +249,7 @@ impl Selector {
             #[cfg(feature = "net")]
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             subscriptions: Default::default(),
+            waker: Default::default(),
         })
     }
 
@@ -156,6 +257,7 @@ impl Selector {
         Ok(Selector {
             id: self.id,
             subscriptions: self.subscriptions.clone(),
+            waker: self.waker.clone(),
         })
     }
 
@@ -164,12 +266,70 @@ impl Selector {
         self.id
     }
 
-    pub fn select(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
-        events.clear();
+    pub fn select(&self, events: &mut Events, mut timeout: Option<Duration>) -> io::Result<()> {
+        loop {
+            let mut waker = self.waker.0.lock().unwrap();
+            match waker.state {
+                PollState::Reset => {
+                    let duration = self.do_poll(events, timeout, waker)?;
 
-        let mut closing = vec![];
+                    if let Some(timeout) = &mut timeout {
+                        *timeout = timeout.saturating_sub(duration);
+                    }
+                }
+                PollState::WakerEvent => {
+                    // this path should only happen if the waker event was triggered outside of the polling call
+                    waker.state = PollState::Reset;
+                    events.clear();
+                    events.push(waker.event());
+                    return Ok(());
+                }
+                PollState::Finished => {
+                    waker.state = PollState::Reset;
+                    return Ok(());
+                }
+                PollState::Polling(_) => {
+                    return Err(io::ErrorKind::ResourceBusy.into());
+                }
+            }
+        }
+    }
+
+    ///
+    /// # Summary
+    /// Collect the subscriptions and reset the locks for a poll to occur
+    /// poll needs to be called after this funtion returns
+    ///
+    /// # Details
+    /// by taking the MutexGuard, it atomicise the following:
+    /// - check if a (re)run needs to happen (already done)
+    /// - fetch the current list of subscriptions
+    /// - set the Polling state
+    ///
+    /// if anything goes out of sync, a race condition could loose a wake call
+    fn prepare_poll(
+        &self,
+        timeout: Option<Duration>,
+        mut waker: MutexGuard<'_, WakerInner>,
+        waker_socket: Socket,
+    ) -> Vec<wasi::Subscription> {
+        let waker_fd = waker_socket.as_raw_fd();
+
+        waker.state = PollState::Polling(waker_socket);
 
         let mut subscriptions = self.subscriptions();
+
+        subscriptions.push(wasi::Subscription {
+            userdata: waker_fd as wasi::Userdata,
+            u: wasi::SubscriptionU {
+                tag: wasi::EVENTTYPE_FD_READ,
+                u: wasi::SubscriptionUU {
+                    fd_read: wasi::SubscriptionFdReadwrite {
+                        file_descriptor: waker_fd as _,
+                    },
+                },
+            },
+        });
 
         // If we want to a use a timeout in the `wasi_poll_oneoff()` function
         // we need another subscription to the list.
@@ -177,93 +337,122 @@ impl Selector {
             subscriptions.push(timeout_subscription(timeout));
         }
 
+        subscriptions
+    }
+
+    ///
+    /// Returns the duration the Poll actually ran for
+    ///
+    /// when [`Self::do_poll`] returns, the [`PollState`] is either [`PollState::Finished`] or [`PollState::Reset`]
+    fn do_poll(
+        &self,
+        events: &mut Vec<wasi::Event>,
+        timeout: Option<Duration>,
+        waker: MutexGuard<'_, WakerInner>,
+    ) -> Result<Duration, io::Error> {
+        let waker_socket = Socket::new(AddressFamily::Inet4, SocketType::Datagram)?;
+        let waker_fd = waker_socket.as_raw_fd() as wasi::Fd;
+
+        let subscriptions = self.prepare_poll(timeout, waker, waker_socket);
+
+        let mut closing = vec![];
+        let mut deregistered = vec![];
+
         // `poll_oneoff` needs the same number of events as subscriptions.
         let length = subscriptions.len();
+        events.clear();
+        // footgun: the 'additional' is compared to [`Vec::len`] not [`Vec::capacity`]
         events.reserve(length);
 
         debug_assert!(events.capacity() >= length);
 
+        let now = std::time::Instant::now();
+
         let res = unsafe { wasi::poll(subscriptions.as_ptr(), events.as_mut_ptr(), length) };
 
-        // Remove the timeout subscription we possibly added above.
+        let mut waker = self.waker.0.lock().unwrap();
+        let duration = std::time::Instant::now() - now;
+
+        if matches!(waker.state, PollState::Polling(_)) {
+            waker.state = PollState::Finished;
+        }
+
+        let n_events = res?;
+
+        // Safety: `poll_oneoff` initialises the `events` for us.
+        unsafe { events.set_len(n_events) };
+
+        let mut subscriptions = self.subscriptions.lock().unwrap();
+        let waker_token = waker.token.as_ref().map(|t| t.0).unwrap_or_default();
+
+        let mut timeout_index = None;
+
+        for (i, ev) in events.iter_mut().enumerate() {
+            let fd = ev.userdata as wasi::Fd;
+            if fd == waker_fd {
+                ev.fd_readwrite.flags = 0;
+                ev.userdata = waker_token as _;
+                continue;
+            }
+
+            if is_timeout_event(ev) {
+                timeout_index = Some(i);
+                continue;
+            }
+
+            if ev.fd_readwrite.flags & wasi::EVENTRWFLAGS_FD_READWRITE_HANGUP != 0
+                || ev.error == ERRNO_BADF.raw()
+            {
+                closing.push(i);
+            }
+
+            if let Some((token, _interest, read_state, write_state)) = subscriptions.get(&fd) {
+                if ev.type_ == wasi::EVENTTYPE_FD_READ {
+                    ev.userdata = token.0 as wasi::Userdata;
+                    read_state.store(false, Ordering::Release);
+                    continue;
+                }
+
+                if ev.type_ == wasi::EVENTTYPE_FD_WRITE {
+                    ev.userdata = token.0 as wasi::Userdata;
+                    write_state.store(0, Ordering::Release);
+                    continue;
+                }
+            } else {
+                deregistered.push(i);
+            }
+        }
+
+        // Remove the timeout event.
         if timeout.is_some() {
-            let timeout_sub = subscriptions.pop();
-            debug_assert_eq!(
-                timeout_sub.unwrap().u.tag,
-                wasi::EVENTTYPE_CLOCK,
-                "failed to remove timeout subscription"
-            );
+            if let Some(index) = timeout_index {
+                events.swap_remove(index);
+            }
         }
 
-        match res {
-            Ok(n_events) => {
-                // Safety: `poll_oneoff` initialises the `events` for us.
-                unsafe { events.set_len(n_events) };
+        if !closing.is_empty() || !deregistered.is_empty() {
+            let closing_fds: Vec<wasi::Fd> = closing
+                .iter()
+                .map(|i| events[*i].userdata as wasi::Fd)
+                .collect();
 
-                let mut subscriptions = self.subscriptions.lock().unwrap();
+            subscriptions.retain(|k, _s| !closing_fds.contains(&k));
 
-                let mut timeout_index = None;
-
-                for (i, ev) in events.iter_mut().enumerate() {
-                    let fd = ev.userdata as wasi::Fd;
-
-                    if is_timeout_event(ev) {
-                        timeout_index = Some(i);
-                        continue;
+            *events = events
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, e)| {
+                    if closing.contains(&i) || deregistered.contains(&i) {
+                        None
+                    } else {
+                        Some(*e)
                     }
-
-                    if ev.fd_readwrite.flags & wasi::EVENTRWFLAGS_FD_READWRITE_HANGUP != 0 {
-                        closing.push(i);
-                    }
-
-                    if let Some((token, _interest, read_state, write_state)) =
-                        subscriptions.get(&fd)
-                    {
-                        if ev.type_ == wasi::EVENTTYPE_FD_READ {
-                            ev.userdata = token.0 as wasi::Userdata;
-                            read_state.store(false, Ordering::Release);
-                            continue;
-                        }
-
-                        if ev.type_ == wasi::EVENTTYPE_FD_WRITE {
-                            ev.userdata = token.0 as wasi::Userdata;
-                            write_state.fetch_sub(1, Ordering::Release);
-                            continue;
-                        }
-                    }
-                }
-
-                // Remove the timeout event.
-                if timeout.is_some() {
-                    if let Some(index) = timeout_index {
-                        events.swap_remove(index);
-                    }
-                }
-
-                if !closing.is_empty() {
-                    let closing_fds: Vec<wasi::Fd> = closing
-                        .iter()
-                        .map(|i| events[*i].userdata as wasi::Fd)
-                        .collect();
-                    
-                    subscriptions.retain(|k, _s| !closing_fds.contains(&k));
-
-                    *events = events
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(i, e)| if closing.contains(&i) { None } else { Some(*e) })
-                        .collect();
-                }
-
-                Ok(())
-            }
-            Err(err) if err.kind() == io::ErrorKind::InvalidInput && length == 0 => {
-                // return Ok when there is no subscriptions
-                // otherwise, poll will return an error.
-                Ok(())
-            }
-            Err(err) => Err(err),
+                })
+                .collect();
         }
+
+
+        Ok(duration)
     }
 
     #[cfg(feature = "net")]
@@ -275,7 +464,9 @@ impl Selector {
         (read_state, write_state): (Arc<AtomicBool>, Arc<AtomicUsize>),
     ) -> io::Result<()> {
         let mut subscriptions = self.subscriptions.lock().unwrap();
+        let mut waker = self.waker.0.lock().unwrap();
         subscriptions.insert(fd, (token, interests, read_state, write_state));
+        waker.wake_rerun()?;
 
         Ok(())
     }
@@ -305,7 +496,7 @@ impl Selector {
         ret
     }
     pub fn register_waker(&self) -> bool {
-        false
+        self.waker.0.lock().unwrap().token.is_some()
     }
 }
 
@@ -470,8 +661,6 @@ impl IoSourceState {
     where
         F: FnOnce(&T) -> io::Result<R>,
     {
-        // We don't hold state, so we can just call the function and
-        // return.
         let r = f(io);
         match &r {
             Ok(_) => {
